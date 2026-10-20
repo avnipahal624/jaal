@@ -118,7 +118,7 @@ export function SidebarContent({
           <div className="border border-jborder/60 bg-jsurface/80 p-3">
             <div className="flex items-center gap-2">
               <ShieldCheck className="size-3.5 text-jgreen" />
-              <p className="jaal-label !tracking-[0.14em] text-jgreen">
+              <p className="jaal-label !tracking-[0.14em] !text-jgreen">
                 Simulation mode
               </p>
             </div>

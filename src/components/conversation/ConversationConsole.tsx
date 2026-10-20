@@ -40,7 +40,6 @@ export function ConversationConsole({
   // Evidence → "open source message" jumps here.
   useEffect(() => {
     if (!highlightId) return;
-    setStickToBottom(false);
     const t = window.setTimeout(() => {
       document
         .getElementById(`msg-${highlightId}`)

@@ -28,6 +28,7 @@ export default function DashboardPage() {
   const { state } = useJaal();
   const activities = useAllActivities();
   const [filter, setFilter] = useState<InvestigationFilter>("active");
+  const [headerTime] = useState(() => Date.now());
 
   const stats = useMemo(() => {
     const active = state.investigations.filter((i) => i.status === "active");
@@ -77,7 +78,7 @@ export default function DashboardPage() {
         className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"
       >
         <div>
-          <p className="jaal-label">Command dashboard · {formatDateTime(Date.now())}</p>
+          <p className="jaal-label">Command dashboard · {formatDateTime(headerTime)}</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-jtext sm:text-3xl">
             Investigation overview
           </h1>

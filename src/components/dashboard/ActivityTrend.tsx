@@ -1,4 +1,5 @@
 import { useJaal } from "@/state/JaalProvider";
+import { useState } from "react";
 import {
   Bar,
   BarChart,
@@ -16,8 +17,8 @@ import {
  */
 export function ActivityTrend({ days = 7 }: { days?: number }) {
   const { state } = useJaal();
-
-  const now = Date.now();
+  // Fixed once per mount so the bucket grid does not jump on re-render.
+  const [now] = useState(() => Date.now());
   const startOfDay = (ts: number) => {
     const d = new Date(ts);
     d.setHours(0, 0, 0, 0);

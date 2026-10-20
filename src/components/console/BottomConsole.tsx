@@ -107,15 +107,17 @@ export function BottomConsole({
     [runtime?.evidence, runtime?.tactics.length],
   );
 
-  // OSINT staged scan reveal
+  // OSINT staged scan reveal (increments from the interval callback only)
   useEffect(() => {
     if (tab !== "osint" || !expanded) return;
-    setScanIndex(0);
-    let i = 0;
     const timer = window.setInterval(() => {
-      i += 1;
-      setScanIndex(i);
-      if (i >= scanLines.length) window.clearInterval(timer);
+      setScanIndex((prev) => {
+        if (prev >= scanLines.length) {
+          window.clearInterval(timer);
+          return prev;
+        }
+        return prev + 1;
+      });
     }, 240);
     return () => window.clearInterval(timer);
   }, [tab, expanded, scanLines.length]);

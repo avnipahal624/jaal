@@ -1,8 +1,8 @@
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useJaal } from "@/state/JaalProvider";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router";import { SidebarContent } from "./Sidebar";
+import { useState } from "react";
+import { Outlet } from "react-router";import { SidebarContent } from "./Sidebar";
 import { TopBar } from "./TopBar";
 
 /**

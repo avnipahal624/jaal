@@ -35,6 +35,7 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(() => Boolean(localStorage.getItem(REMEMBER_KEY)));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<null | "login" | "demo">(null);
+  const [sessionStamp] = useState(() => formatDateTime(Date.now()));
 
   // Already has a session → go straight to the console.
   useEffect(() => {
@@ -127,7 +128,7 @@ export default function LoginPage() {
           </ul>
 
           <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.2em] text-jmuted/70">
-            {formatDateTime(Date.now())} · session node idle
+            {sessionStamp} · session node idle
           </p>
         </motion.div>
 
