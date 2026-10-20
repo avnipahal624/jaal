@@ -54,6 +54,8 @@ interface JaalContextValue {
   createCase: (input: CreateCaseInput) => string;
   getCase: (caseId: string) => { investigation: Investigation; runtime: JaalState["sessions"][string] } | null;
   sendMessage: (caseId: string, text: string) => Promise<void>;
+  /** Trigger the next scripted scammer line without operator input. */
+  advanceSimulation: (caseId: string) => Promise<void>;
   /** Import pasted transcript lines directly into the conversation. */
   ingestTranscript: (caseId: string, raw: string) => number;
   togglePause: (caseId: string) => void;
@@ -318,6 +320,57 @@ export function JaalProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const advanceSimulation = useCallback(async (caseId: string) => {
+    const current = stateRef.current.sessions[caseId];
+    if (!current || current.status !== "running") return;
+
+    if (arcExhausted(current.cursor)) {
+      dispatch({
+        type: "INGEST_MESSAGE",
+        message: {
+          id: uid("msg"),
+          caseId,
+          author: "system",
+          text: "Script exhausted — no further synthetic lines available.",
+          timestamp: Date.now(),
+          source: "SIM-ENGINE",
+        },
+      });
+      return;
+    }
+
+    dispatch({ type: "TYPING", caseId, typing: true });
+    await new Promise((r) => setTimeout(r, 700));
+    const rt = stateRef.current.sessions[caseId];
+    if (!rt || rt.status !== "running") {
+      dispatch({ type: "TYPING", caseId, typing: false });
+      return;
+    }
+    const turn = nextScammerTurn("", rt.cursor, rt.turnCount);
+    if (turn.exhausted) {
+      dispatch({ type: "TYPING", caseId, typing: false });
+      dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
+      return;
+    }
+    const nextCursor = turn.arc ? rt.cursor + 1 : rt.cursor;
+    dispatch({
+      type: "INGEST_MESSAGE",
+      message: {
+        id: uid("msg"),
+        caseId,
+        author: "scammer",
+        text: turn.text,
+        timestamp: Date.now(),
+        source: turn.branch ? `SIM-ENGINE·${turn.branch.id}` : "SIM-ENGINE",
+      },
+      cursor: nextCursor,
+      turnCount: rt.turnCount + 1,
+    });
+    if (arcExhausted(nextCursor) && !turn.branch) {
+      dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
+    }
+  }, []);
+
   const ingestTranscript = useCallback((caseId: string, raw: string): number => {
     const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     let count = 0;
@@ -485,6 +538,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       createCase,
       getCase,
       sendMessage,
+      advanceSimulation,
       ingestTranscript,
       togglePause,
       endInvestigation,
@@ -511,6 +565,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       createCase,
       getCase,
       sendMessage,
+      advanceSimulation,
       ingestTranscript,
       togglePause,
       endInvestigation,

@@ -79,7 +79,7 @@ export default function LoginPage() {
     <div className="relative min-h-screen overflow-hidden bg-background">
       <NetworkBackdrop />
 
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center gap-10 px-5 py-10 lg:grid lg:grid-cols-2 lg:items-center lg:gap-16 lg:px-10">
+      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center gap-10 px-5 py-10 lg:grid lg:grid-cols-[3fr_2fr] lg:items-center lg:gap-16 lg:px-10">
         {/* Brand side */}
         <motion.div
           initial={{ opacity: 0, x: -18 }}

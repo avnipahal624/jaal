@@ -4,32 +4,50 @@ import { Chip, RUN_STATUS_TONE } from "@/components/ui/panel";
 import { useJaal } from "@/state/JaalProvider";
 import { useSimulation } from "@/hooks/useSimulation";
 import type { CaseRuntime, Investigation } from "@/types/investigation";
-import { ArrowDown, FileStack, RotateCcw, ScrollText } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  ArrowDown,
+  FastForward,
+  FileStack,
+  Pause,
+  Play,
+  Radio,
+  RotateCcw,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 
 /**
- * Hacker-style conversation terminal: dense rows, mono metadata, live status.
- * Messages arrive dynamically through the local simulation engine.
+ * LIVE INTERCEPT — the dominant conversation panel. Scammer lines use muted
+ * red accents, JAAL decoy lines use cyan. New messages animate in and briefly
+ * highlight.
  */
 export function ConversationConsole({
   investigation,
   runtime,
-  onGenerateReport,
   highlightId,
 }: {
   investigation: Investigation;
   runtime: CaseRuntime;
-  onGenerateReport: () => void;
   /** Scroll to + flash this message (evidence “open source” action). */
   highlightId?: string | null;
 }) {
-  const { ingestTranscript, notify } = useJaal();
-  const { send, pause, reset, isRunning, isPaused, isCompleted, isTyping, suggestions } =
-    useSimulation(investigation.id);
+  const { ingestTranscript, notify, advanceSimulation, togglePause } = useJaal();
+  const {
+    send,
+    reset,
+    isRunning,
+    isPaused,
+    isCompleted,
+    isTyping,
+    suggestions,
+  } = useSimulation(investigation.id);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [stickToBottom, setStickToBottom] = useState(true);
+  const [freshId, setFreshId] = useState<string | null>(null);
 
   const messages = runtime.messages;
+  const lastId = messages[messages.length - 1]?.id ?? null;
 
   useEffect(() => {
     if (!stickToBottom) return;
@@ -37,7 +55,15 @@ export function ConversationConsole({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length, isTyping, stickToBottom]);
 
-  // Evidence → "open source message" jumps here.
+  // Briefly highlight the newest message.
+  useEffect(() => {
+    if (!lastId) return;
+    setFreshId(lastId);
+    const t = window.setTimeout(() => setFreshId(null), 2400);
+    return () => window.clearTimeout(t);
+  }, [lastId]);
+
+  // Evidence → “open source message” jumps here.
   useEffect(() => {
     if (!highlightId) return;
     const t = window.setTimeout(() => {
@@ -51,14 +77,12 @@ export function ConversationConsole({
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-    setStickToBottom(atBottom);
+    setStickToBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 60);
   };
 
   const scrollToLatest = () => {
     setStickToBottom(true);
-    const el = scrollRef.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   };
 
   const handleImport = async (file: File | undefined) => {
@@ -79,8 +103,7 @@ export function ConversationConsole({
     const sample = window.prompt(
       "Paste transcript lines (form: “Scammer: …” / “Me: …”):",
     );
-    if (!sample) return;
-    ingestTranscript(investigation.id, sample);
+    if (sample) ingestTranscript(investigation.id, sample);
   };
 
   const scammerCount = messages.filter((m) => m.author === "scammer").length;
@@ -91,21 +114,39 @@ export function ConversationConsole({
       {/* Header */}
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-jborder/60 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <ScrollText className="size-3.5 shrink-0 text-jcyan" />
-          <p className="jaal-label">Conversation console</p>
+          <Radio className={cn("size-3.5 shrink-0", isRunning ? "text-jred jaal-pulse" : "text-jmuted")} />
+          <p className="jaal-label !text-jcyan">Live intercept</p>
           <Chip tone={RUN_STATUS_TONE[runtime.status]} pulse={isRunning}>
-            {runtime.status}
+            {runtime.status === "running" ? "live" : runtime.status}
           </Chip>
-        </div>
-        <div className="flex items-center gap-2">
           <span className="hidden font-mono text-[9px] uppercase tracking-widest text-jmuted sm:inline">
-            {scammerCount} suspect · {decoyCount} decoy
+            {messages.length} msgs · {scammerCount} suspect · {decoyCount} decoy
           </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => togglePause(investigation.id)}
+            disabled={isCompleted}
+            title={isPaused ? "Resume simulation" : "Pause simulation"}
+            className="flex size-6 items-center justify-center border border-jborder/70 text-jmuted transition-colors hover:border-jamber/60 hover:text-jamber disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isPaused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => void advanceSimulation(investigation.id)}
+            disabled={!isRunning || isTyping}
+            title="Trigger next synthetic scammer line"
+            className="flex items-center gap-1 border border-jred/50 bg-jred/10 px-1.5 py-1 font-mono text-[9px] uppercase tracking-wider text-jred transition-colors hover:bg-jred/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <FastForward className="size-3" /> next line
+          </button>
           <button
             type="button"
             onClick={pasteImport}
             title="Paste transcript"
-            className="flex size-6 items-center justify-center border border-jborder/70 text-jmuted transition-colors hover:border-jcyan/50 hover:text-jcyan"
+            className="flex size-6 items-center justify-center border border-jborder/70 text-jmuted transition-colors hover:border-jcyan/60 hover:text-jcyan"
           >
             <FileStack className="size-3.5" />
           </button>
@@ -130,19 +171,18 @@ export function ConversationConsole({
         <div className="relative space-y-1.5">
           {messages.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
-              <p className="text-sm text-jmuted">
-                No messages in this session yet.
-              </p>
+              <p className="text-sm text-jmuted">No intercept content yet.</p>
               <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted/60">
                 Reset the simulation to seed the opening line
               </p>
             </div>
           )}
-          {messages.map((m) => (
+          {messages.map((m, i) => (
             <MessageRow
               key={m.id}
               message={m}
-              highlight={highlightId === m.id}
+              number={i + 1}
+              highlight={highlightId === m.id || freshId === m.id}
             />
           ))}
           {isTyping && <TypingIndicator />}
@@ -168,7 +208,7 @@ export function ConversationConsole({
                 Simulation complete
               </p>
               <p className="text-[10px] text-jmuted">
-                Script exhausted — all evidence preserved below.
+                Script exhausted — evidence preserved below.
               </p>
             </div>
             <div className="flex gap-1.5">
@@ -179,13 +219,12 @@ export function ConversationConsole({
               >
                 <RotateCcw className="size-3" /> Restart
               </button>
-              <button
-                type="button"
-                onClick={onGenerateReport}
+              <Link
+                to={`/investigations/${investigation.id}/complete`}
                 className="border border-jcyan/50 bg-jcyan/10 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-jcyan transition-colors hover:bg-jcyan/20"
               >
-                Generate report
-              </button>
+                View completion
+              </Link>
             </div>
           </div>
         </div>
@@ -195,11 +234,11 @@ export function ConversationConsole({
         <div className="shrink-0 border-t border-jamber/40 bg-jamber/10 px-3 py-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] text-jamber">
-              Simulation paused — conversation frozen.
+              Simulation paused — intercept frozen.
             </p>
             <button
               type="button"
-              onClick={pause}
+              onClick={() => togglePause(investigation.id)}
               className="border border-jamber/50 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-jamber transition-colors hover:bg-jamber/15"
             >
               Resume
@@ -212,7 +251,7 @@ export function ConversationConsole({
         disabled={isPaused || isCompleted}
         disabledReason={
           isCompleted
-            ? "Script exhausted. Restart the simulation to continue, or generate the report."
+            ? "Script exhausted. Restart the simulation or open the completion screen."
             : "Simulation paused — resume to send the next decoy reply."
         }
         suggestions={suggestions}

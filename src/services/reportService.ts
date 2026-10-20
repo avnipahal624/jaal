@@ -1,4 +1,5 @@
 import { TACTIC_META } from "@/services/investigationService";
+import { buildCaseSummary, buildUnknowns } from "@/services/summaryService";
 import type { CaseRuntime, Investigation } from "@/types/investigation";
 import type { EvidenceReport } from "@/types/report";
 import { downloadJson } from "@/utils/export";
@@ -36,6 +37,8 @@ export function buildReport(
     evidenceCount: runtime.evidence.length,
     integrity,
     description: investigation.description,
+    summary: buildCaseSummary(investigation, runtime),
+    unknowns: buildUnknowns(investigation, runtime),
     transcript: runtime.messages.map((m) => ({
       author: m.author,
       text: m.text,

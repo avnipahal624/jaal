@@ -62,7 +62,7 @@ export function buildSeedCases(now = Date.now()): SeedCase[] {
       currentStage: "contact",
       source: "simulation",
       detectionMode: "simulation",
-      flags: { tacticDetection: true, identifierExtraction: true, integrityHashing: true },
+      flags: { tacticDetection: true, identifierExtraction: true, integrityHashing: true, aiSuggestions: true },
     },
     messages: [
       msg(
@@ -96,7 +96,7 @@ export function buildSeedCases(now = Date.now()): SeedCase[] {
       currentStage: "exploit",
       source: "simulation",
       detectionMode: "simulation",
-      flags: { tacticDetection: true, identifierExtraction: true, integrityHashing: true },
+      flags: { tacticDetection: true, identifierExtraction: true, integrityHashing: true, aiSuggestions: true },
     },
     messages: [
       msg(
@@ -169,7 +169,7 @@ export function buildSeedCases(now = Date.now()): SeedCase[] {
       currentStage: "exploit",
       source: "paste",
       detectionMode: "balanced",
-      flags: { tacticDetection: true, identifierExtraction: true, integrityHashing: true },
+      flags: { tacticDetection: true, identifierExtraction: true, integrityHashing: true, aiSuggestions: true },
     },
     messages: [
       msg(
@@ -225,7 +225,7 @@ export function buildSeedCases(now = Date.now()): SeedCase[] {
       currentStage: "exploit",
       source: "import",
       detectionMode: "balanced",
-      flags: { tacticDetection: true, identifierExtraction: true, integrityHashing: true },
+      flags: { tacticDetection: true, identifierExtraction: true, integrityHashing: true, aiSuggestions: true },
     },
     messages: [
       msg(

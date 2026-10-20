@@ -18,16 +18,16 @@ export function AppShell() {
 
   return (
     <div
-      data-accent={appearance.accentIntensity}
+      data-accent={appearance.animationIntensity}
       data-density={appearance.density}
-      data-anim={appearance.animations ? "on" : "off"}
+      data-anim={appearance.reducedMotion ? "off" : "on"}
       className="jaal-grid flex min-h-screen bg-background text-foreground"
     >
       {/* Desktop sidebar / icon rail */}
       <aside
         className={cn(
           "jaal-no-print sticky top-0 hidden h-screen shrink-0 border-r border-jborder/70 bg-sidebar transition-[width] duration-200 lg:block",
-          collapsed ? "w-16" : "w-60",
+          collapsed ? "w-16" : "w-[220px]",
         )}
       >
         <div className="relative flex h-full flex-col">

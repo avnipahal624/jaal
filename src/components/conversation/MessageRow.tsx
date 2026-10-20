@@ -12,9 +12,12 @@ import { Bot, ShieldAlert, Terminal } from "lucide-react";
 export function MessageRow({
   message,
   highlight = false,
+  number,
 }: {
   message: ConversationMessage;
   highlight?: boolean;
+  /** Position in the conversation, shown as MSG #NN */
+  number?: number;
 }) {
   if (message.author === "system") {
     return (
@@ -51,6 +54,11 @@ export function MessageRow({
       )}
     >
       <div className="mb-1 flex flex-wrap items-center gap-2">
+        {number !== undefined && (
+          <span className="border border-jborder/70 bg-jsurface px-1.5 py-px font-mono text-[9px] tracking-wider text-jmuted">
+            MSG #{String(number).padStart(2, "0")}
+          </span>
+        )}
         <span
           className={cn(
             "flex size-5 items-center justify-center border",

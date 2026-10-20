@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   ClipboardCopy,
+  ExternalLink,
   FileWarning,
   Fingerprint,
   Loader2,
@@ -39,12 +40,14 @@ export function EvidenceDrawer({
   item,
   caseId,
   onOpenChange,
+  onOpenSource,
   open,
 }: {
   item: EvidenceItem | null;
   caseId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenSource?: () => void;
 }) {
   const { generateHash, verifyEvidence, setEvidenceContent, setEvidenceNotes } =
     useJaal();
@@ -152,6 +155,15 @@ export function EvidenceDrawer({
               <span>case: <span className="text-jcyan">{item.caseId}</span></span>
               <span>extracted: {formatDateTime(item.extractedAt)}</span>
             </div>
+            {onOpenSource && item.sourceMessageId && (
+              <Button
+                size="sm"
+                onClick={onOpenSource}
+                className="mt-2 h-7 cursor-pointer gap-1.5 border border-jcyan/50 bg-jcyan/10 px-2.5 font-mono text-[10px] uppercase tracking-wider text-jcyan hover:bg-jcyan/20 hover:text-jcyan"
+              >
+                <ExternalLink className="size-3" /> Open original message
+              </Button>
+            )}
           </div>
 
           {/* Integrity */}

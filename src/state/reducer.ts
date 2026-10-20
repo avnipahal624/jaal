@@ -473,6 +473,17 @@ export function reducer(state: JaalState, action: Action): JaalState {
       const stageChanged = message.author === "scammer" && stageAfter !== stageBefore;
 
       const acts: ActivityEvent[] = [];
+      if (message.author !== "system") {
+        acts.push(
+          activity(
+            caseId,
+            "message",
+            message.author === "scammer" ? "Message received" : "Decoy message sent",
+            message.text.slice(0, 96),
+            message.timestamp,
+          ),
+        );
+      }
       analysis.tactics.forEach((t) =>
         acts.push(
           activity(

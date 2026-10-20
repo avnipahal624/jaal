@@ -112,6 +112,8 @@ export interface Investigation {
     tacticDetection: boolean;
     identifierExtraction: boolean;
     integrityHashing: boolean;
+    /** AI next-move suggestions in the workspace */
+    aiSuggestions: boolean;
   };
 }
 

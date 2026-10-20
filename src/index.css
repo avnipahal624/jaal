@@ -47,65 +47,84 @@
   --radius: 0.5rem;
   --background: #06131c;
   --foreground: #dcebf0;
-  --card: #0d2431;
+  --card: #0b202c;
   --card-foreground: #dcebf0;
-  --popover: #0a1c28;
+  --popover: #0b202c;
   --popover-foreground: #dcebf0;
   --primary: #39d6e8;
   --primary-foreground: #06131c;
-  --secondary: #0a1c28;
+  --secondary: #081923;
   --secondary-foreground: #dcebf0;
-  --muted: #0a1c28;
+  --muted: #081923;
   --muted-foreground: #7899a9;
-  --accent: #112d3a;
+  --accent: #102b39;
   --accent-foreground: #39d6e8;
   --destructive: #f15b64;
   --destructive-foreground: #06131c;
-  --border: #174452;
-  --input: #174452;
+  --border: #174451;
+  --input: #174451;
   --ring: #39d6e8;
   --chart-1: #39d6e8;
   --chart-2: #35d6a1;
   --chart-3: #ffaa45;
   --chart-4: #f15b64;
   --chart-5: #1b8f91;
-  --sidebar: #0a1c28;
+  --sidebar: #081923;
   --sidebar-foreground: #dcebf0;
   --sidebar-primary: #39d6e8;
   --sidebar-primary-foreground: #06131c;
-  --sidebar-accent: #112d3a;
+  --sidebar-accent: #102b39;
   --sidebar-accent-foreground: #39d6e8;
-  --sidebar-border: #174452;
+  --sidebar-border: #174451;
   --sidebar-ring: #39d6e8;
+}
+
+/* JAAL semantic colors + type scale (additive theme extensions) */
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-jcyan: #39d6e8;
+  --color-jteal: #1b8f91;
+  --color-jamber: #ffaa45;
+  --color-jred: #f15b64;
+  --color-jgreen: #35d6a1;
+  --color-jbg: #06131c;
+  --color-jsurface: #081923;
+  --color-jpanel: #0b202c;
+  --color-jelev: #102b39;
+  --color-jborder: #174451;
+  --color-jmuted: #7899a9;
+  --color-jtext: #dcebf0;
 }
 
 .dark {
   --background: #06131c;
   --foreground: #dcebf0;
-  --card: #0d2431;
+  --card: #0b202c;
   --card-foreground: #dcebf0;
-  --popover: #0a1c28;
+  --popover: #0b202c;
   --popover-foreground: #dcebf0;
   --primary: #39d6e8;
   --primary-foreground: #06131c;
-  --secondary: #0a1c28;
+  --secondary: #081923;
   --secondary-foreground: #dcebf0;
-  --muted: #0a1c28;
+  --muted: #081923;
   --muted-foreground: #7899a9;
-  --accent: #112d3a;
+  --accent: #102b39;
   --accent-foreground: #39d6e8;
   --destructive: #f15b64;
   --destructive-foreground: #06131c;
-  --border: #174452;
-  --input: #174452;
+  --border: #174451;
+  --input: #174451;
   --ring: #39d6e8;
-  --sidebar: #0a1c28;
+  --sidebar: #081923;
   --sidebar-foreground: #dcebf0;
   --sidebar-primary: #39d6e8;
   --sidebar-primary-foreground: #06131c;
-  --sidebar-accent: #112d3a;
+  --sidebar-accent: #102b39;
   --sidebar-accent-foreground: #39d6e8;
-  --sidebar-border: #174452;
+  --sidebar-border: #174451;
   --sidebar-ring: #39d6e8;
 }
 
@@ -190,8 +209,8 @@
     color: #7899a9;
   }
   .jaal-panel {
-    border: 1px solid rgba(23, 68, 82, 0.7);
-    background: rgba(13, 36, 49, 0.8);
+    border: 1px solid rgba(23, 68, 81, 0.7);
+    background: rgba(11, 32, 44, 0.85);
     backdrop-filter: blur(2px);
     box-shadow: inset 0 1px 0 rgba(57, 214, 232, 0.05);
   }

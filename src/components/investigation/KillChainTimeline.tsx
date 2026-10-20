@@ -33,7 +33,11 @@ const STAGE_ICON: Record<string, LucideIcon> = {
   exploit: MonitorSmartphone,
 };
 
-export function KillChainPanel({
+/**
+ * Connected horizontal kill-chain timeline. Statuses derive from actual
+ * message-content detections; the active stage glows amber.
+ */
+export function KillChainTimeline({
   stages,
   messages,
   tactics,
@@ -46,90 +50,90 @@ export function KillChainPanel({
 
   return (
     <>
-      <ol className="relative flex flex-col gap-1 p-2">
-        {/* Connector */}
-        <div className="absolute bottom-4 left-[22px] top-4 w-px bg-gradient-to-b from-jcyan/50 via-jborder to-transparent" />
-
-        {stages.map((stage, i) => {
-          const Icon = STAGE_ICON[stage.id] ?? MessageSquare;
-          const isActive = stage.status === "active";
-          const isDone = stage.status === "completed" || stage.status === "detected";
-          return (
-            <motion.li
-              key={stage.id}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05, duration: 0.25 }}
-              className="relative"
-            >
-              <button
-                type="button"
-                onClick={() => setOpenStage(stage)}
-                className={cn(
-                  "flex w-full items-start gap-2.5 border px-2 py-2 text-left transition-colors",
-                  isActive
-                    ? "border-jamber/60 bg-jamber/10 shadow-[0_0_14px_-6px_rgba(255,170,69,0.7)]"
-                    : isDone
-                      ? "border-jteal/35 bg-jteal/[0.06] hover:border-jteal/60"
-                      : "border-jborder/50 bg-jsurface/60 opacity-60 hover:opacity-90",
-                )}
-              >
-                <span
+      <div className="overflow-x-auto pb-1 no-scrollbar">
+        <ol className="flex min-w-max items-stretch gap-0">
+          {stages.map((stage, i) => {
+            const Icon = STAGE_ICON[stage.id] ?? MessageSquare;
+            const isActive = stage.status === "active";
+            const isDone = stage.status === "completed" || stage.status === "detected";
+            return (
+              <li key={stage.id} className="flex items-center">
+                <motion.button
+                  type="button"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05, duration: 0.25 }}
+                  onClick={() => setOpenStage(stage)}
                   className={cn(
-                    "relative z-10 mt-0.5 flex size-7 shrink-0 items-center justify-center border bg-background",
+                    "flex w-[104px] shrink-0 flex-col items-center gap-1 border px-1.5 py-2 text-center transition-colors",
                     isActive
-                      ? "border-jamber/70 text-jamber"
+                      ? "border-jamber/60 bg-jamber/10 shadow-[0_0_14px_-6px_rgba(255,170,69,0.7)]"
                       : isDone
-                        ? "border-jteal/60 text-jteal"
-                        : "border-jborder text-jmuted/60",
+                        ? "border-jteal/35 bg-jteal/[0.06] hover:border-jteal/60"
+                        : "border-jborder/50 bg-jsurface/60 opacity-60 hover:opacity-90",
                   )}
                 >
-                  <Icon className="size-3.5" />
-                  {isActive && (
-                    <span className="absolute -right-1 -top-1 size-1.5 bg-jamber jaal-pulse" />
-                  )}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center justify-between gap-2">
-                    <span
-                      className={cn(
-                        "truncate text-[11px] font-semibold",
-                        isActive ? "text-jamber" : isDone ? "text-jtext" : "text-jmuted",
-                      )}
-                    >
-                      {stage.number}. {stage.label}
-                    </span>
-                    <Chip
-                      tone={STAGE_STATUS_TONE[stage.status]}
-                      className="!px-1.5 !text-[8px]"
-                    >
-                      {stage.status}
-                    </Chip>
+                  <span
+                    className={cn(
+                      "relative flex size-7 items-center justify-center border bg-background",
+                      isActive
+                        ? "border-jamber/70 text-jamber"
+                        : isDone
+                          ? "border-jteal/60 text-jteal"
+                          : "border-jborder text-jmuted/60",
+                    )}
+                  >
+                    <Icon className="size-3.5" />
+                    {isActive && (
+                      <span className="absolute -right-1 -top-1 size-1.5 bg-jamber jaal-pulse" />
+                    )}
                   </span>
-                  <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[9px] uppercase tracking-wider text-jmuted/70">
-                    <span>
-                      {stage.detectedAt ? formatDateTime(stage.detectedAt) : "not detected"}
-                    </span>
-                    <span>· {stage.messageIds.length} msg</span>
-                    <span>· {stage.tactics.length} tactics</span>
+                  <span
+                    className={cn(
+                      "font-mono text-[8px] uppercase tracking-widest",
+                      isActive ? "text-jamber" : "text-jmuted/70",
+                    )}
+                  >
+                    0{stage.number}
                   </span>
-                </span>
-              </button>
-            </motion.li>
-          );
-        })}
-      </ol>
+                  <span
+                    className={cn(
+                      "text-[9.5px] font-semibold leading-tight",
+                      isActive ? "text-jamber" : isDone ? "text-jtext" : "text-jmuted",
+                    )}
+                  >
+                    {stage.label}
+                  </span>
+                  <span
+                    className={cn(
+                      "font-mono text-[7.5px] uppercase tracking-wider",
+                      STAGE_STATUS_TONE[stage.status].split(" ").pop(),
+                    )}
+                  >
+                    {stage.status}
+                  </span>
+                </motion.button>
+                {i < stages.length - 1 && (
+                  <span
+                    className={cn(
+                      "h-px w-3 shrink-0",
+                      isDone ? "bg-jteal/50" : "bg-jborder",
+                    )}
+                  />
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      </div>
 
-      {/* Stage detail */}
       <Dialog open={openStage !== null} onOpenChange={(o) => !o && setOpenStage(null)}>
         <DialogContent className="max-w-lg border-jborder/80 bg-popover">
           {openStage && (
             <>
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-jtext">
-                  <span className="font-mono text-jcyan">
-                    0{openStage.number}
-                  </span>
+                <DialogTitle className="flex flex-wrap items-center gap-2 text-jtext">
+                  <span className="font-mono text-jcyan">0{openStage.number}</span>
                   {openStage.label}
                   <Chip tone={STAGE_STATUS_TONE[openStage.status]}>
                     {openStage.status}
@@ -139,13 +143,11 @@ export function KillChainPanel({
                   {openStage.description}
                 </DialogDescription>
               </DialogHeader>
-
               <div className="space-y-3">
                 <div className="border border-jborder/70 bg-jsurface p-3">
                   <p className="jaal-label">Why this stage was identified</p>
                   <p className="mt-1 text-xs leading-relaxed text-jtext">
-                    {openStage.reason ||
-                      "No message content has yet matched this stage's detection pattern."}
+                    {openStage.reason || "No message content has yet matched this stage."}
                   </p>
                   {openStage.detectedAt && (
                     <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-jmuted">
@@ -153,15 +155,12 @@ export function KillChainPanel({
                     </p>
                   )}
                 </div>
-
                 <div>
-                  <p className="jaal-label mb-1.5">Associated messages</p>
+                  <p className="jaal-label mb-1.5">Supporting messages</p>
                   {openStage.messageIds.length === 0 ? (
-                    <p className="text-xs text-jmuted">
-                      No messages linked to this stage yet.
-                    </p>
+                    <p className="text-xs text-jmuted">No messages linked yet.</p>
                   ) : (
-                    <ul className="max-h-40 space-y-1.5 overflow-y-auto">
+                    <ul className="max-h-44 space-y-1.5 overflow-y-auto">
                       {messages
                         .filter((m) => openStage.messageIds.includes(m.id))
                         .map((m) => (
@@ -172,7 +171,7 @@ export function KillChainPanel({
                             <p className="font-mono text-[9px] uppercase tracking-widest text-jmuted">
                               {m.author} · {formatDateTime(m.timestamp)}
                             </p>
-                            <p className="mt-0.5 line-clamp-3 text-[11px] text-jtext/90">
+                            <p className="mt-0.5 text-[11px] leading-relaxed text-jtext/90">
                               {m.text}
                             </p>
                           </li>
@@ -180,7 +179,6 @@ export function KillChainPanel({
                     </ul>
                   )}
                 </div>
-
                 <div>
                   <p className="jaal-label mb-1.5">Detected tactics here</p>
                   {openStage.tactics.length === 0 ? (
@@ -195,10 +193,9 @@ export function KillChainPanel({
                     </div>
                   )}
                 </div>
-
                 {tactics.length > 0 && (
                   <p className="font-mono text-[9px] uppercase tracking-widest text-jmuted/60">
-                    {tactics.length} tactic detections total in this session
+                    {tactics.length} tactic detections in this session
                   </p>
                 )}
               </div>

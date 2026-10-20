@@ -42,11 +42,14 @@ export function EvidenceCard({
   onOpen,
   onOpenSource,
   compact = false,
+  sourceNumber,
 }: {
   item: EvidenceItem;
   onOpen: () => void;
   onOpenSource?: () => void;
   compact?: boolean;
+  /** Position of the source message, shown as MESSAGE #NN */
+  sourceNumber?: number;
 }) {
   const [copied, setCopied] = useState(false);
   const Icon = EVIDENCE_ICON[item.type] ?? Fingerprint;
@@ -108,6 +111,11 @@ export function EvidenceCard({
       </div>
 
       <p className="mt-2 line-clamp-2 border-l-2 border-jborder/70 pl-2 text-[10px] leading-relaxed text-jmuted">
+        {sourceNumber !== undefined && (
+          <span className="mr-1.5 font-mono text-[9px] uppercase tracking-wider text-jcyan/80">
+            source: message #{String(sourceNumber).padStart(2, "0")}
+          </span>
+        )}
         {item.sourceMessageText || "No source message attached."}
       </p>
 

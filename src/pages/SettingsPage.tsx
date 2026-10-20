@@ -28,7 +28,7 @@ import {
   type DetectionMode,
   type ScamCategory,
 } from "@/types/investigation";
-import type { AccentIntensity, Density } from "@/types/settings";
+import type { AnimationIntensity, Density } from "@/types/settings";
 import { motion } from "framer-motion";
 import {
   Palette,
@@ -163,13 +163,13 @@ export default function SettingsPage() {
             <Chip tone="border-jcyan/50 bg-jcyan/10 text-jcyan">dark · locked</Chip>
           </Row>
           <Row
-            title="Accent intensity"
-            description="Controls the strength of cyan highlights and glows."
+            title="Animation intensity"
+            description="Controls the strength of pulses, sweeps and hover motion."
           >
-            <Segmented<AccentIntensity>
-              value={appearance.accentIntensity}
+            <Segmented<AnimationIntensity>
+              value={appearance.animationIntensity}
               onChange={(v) =>
-                updateSettings({ appearance: { accentIntensity: v } })
+                updateSettings({ appearance: { animationIntensity: v } })
               }
               options={[
                 { id: "subtle", label: "Subtle" },
@@ -192,13 +192,13 @@ export default function SettingsPage() {
             />
           </Row>
           <Row
-            title="Animations"
-            description="Disable panel motion, pulses and sweeps (reduced motion is always respected)."
+            title="Reduced motion"
+            description="Disable panel motion, pulses and sweeps. The OS-level reduced-motion preference is always respected."
           >
             <Switch
-              checked={appearance.animations}
+              checked={appearance.reducedMotion}
               onCheckedChange={(v) =>
-                updateSettings({ appearance: { animations: v } })
+                updateSettings({ appearance: { reducedMotion: v } })
               }
               className="data-[state=checked]:bg-jcyan data-[state=checked]:text-background"
             />

@@ -1,28 +1,33 @@
-import { AnalysisPanel } from "@/components/analysis/AnalysisPanel";
+import { AiAnalysisPanel } from "@/components/analysis/AiAnalysisPanel";
+import { AiStrategyPanel } from "@/components/analysis/AiStrategyPanel";
+import { DetectedTactics } from "@/components/analysis/DetectedTactics";
 import { BottomConsole } from "@/components/console/BottomConsole";
 import { ConversationConsole } from "@/components/conversation/ConversationConsole";
 import { EvidenceDrawer } from "@/components/evidence/EvidenceDrawer";
 import { EvidencePanel } from "@/components/evidence/EvidencePanel";
-import { KillChainPanel } from "@/components/investigation/KillChainPanel";
+import { KillChainTimeline } from "@/components/investigation/KillChainTimeline";
 import { WorkspaceHeader } from "@/components/investigation/WorkspaceHeader";
-import { Chip, Panel } from "@/components/ui/panel";
+import { Chip, Panel, STAGE_STATUS_TONE } from "@/components/ui/panel";
 import { useInvestigation } from "@/hooks/useInvestigation";
+import { useSimulation } from "@/hooks/useSimulation";
 import { useJaal } from "@/state/JaalProvider";
 import { cn } from "@/lib/utils";
-import { FolderKanban, MessageSquare, Radar, ScrollText, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { STAGE_LABELS } from "@/services/investigationService";
 import {
-  Link,
-  useNavigate,
-  useParams,
-  useSearchParams,
-} from "react-router";
+  Brain,
+  FolderKanban,
+  MessageSquare,
+  ScrollText,
+  ShieldCheck,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 
-type MobileTab = "conversation" | "analysis" | "evidence" | "logs";
+type MobileTab = "chat" | "analysis" | "evidence" | "logs";
 
 const TABS: { id: MobileTab; label: string; icon: typeof MessageSquare }[] = [
-  { id: "conversation", label: "Conversation", icon: MessageSquare },
-  { id: "analysis", label: "Analysis", icon: Radar },
+  { id: "chat", label: "Chat", icon: MessageSquare },
+  { id: "analysis", label: "AI analysis", icon: Brain },
   { id: "evidence", label: "Evidence", icon: ShieldCheck },
   { id: "logs", label: "Logs", icon: ScrollText },
 ];
@@ -30,17 +35,25 @@ const TABS: { id: MobileTab; label: string; icon: typeof MessageSquare }[] = [
 export default function InvestigationWorkspacePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { togglePause, endInvestigation, resetCase, createReport, notify } =
+  const { endInvestigation, resetCase, createReport, notify, togglePause } =
     useJaal();
   const { investigation, runtime } = useInvestigation(id);
+  const { send } = useSimulation(id);
 
   const [searchParams] = useSearchParams();
-  // /investigations/:id?msg=<id> — “open source message” from the full locker.
   const [openEvidenceId, setOpenEvidenceId] = useState<string | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(
     () => searchParams.get("msg"),
   );
-  const [mobileTab, setMobileTab] = useState<MobileTab>("conversation");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("chat");
+
+  const messageNumbers = useMemo(() => {
+    const map: Record<string, number> = {};
+    runtime?.messages.forEach((m, i) => {
+      map[m.id] = i + 1;
+    });
+    return map;
+  }, [runtime?.messages]);
 
   const activeStage = useMemo(
     () => runtime?.stages.find((s) => s.status === "active"),
@@ -62,8 +75,7 @@ export default function InvestigationWorkspacePage() {
     );
   }
 
-  const evidenceItem =
-    runtime.evidence.find((e) => e.id === openEvidenceId) ?? null;
+  const evidenceItem = runtime.evidence.find((e) => e.id === openEvidenceId) ?? null;
 
   const handleReport = () => {
     const report = createReport(investigation.id);
@@ -77,39 +89,48 @@ export default function InvestigationWorkspacePage() {
       });
   };
 
-  const openSource = (messageId: string) => {
-    setMobileTab("conversation");
-    setHighlightId(messageId);
+  const handleEnd = () => {
+    endInvestigation(investigation.id);
+    navigate(`/investigations/${investigation.id}/complete`);
   };
 
-  const killChain = (
-    <KillChainPanel
-      stages={runtime.stages}
-      messages={runtime.messages}
-      tactics={runtime.tactics}
-    />
-  );
+  const openSource = (messageId: string) => {
+    setMobileTab("chat");
+    setHighlightId(messageId);
+  };
 
   const conversation = (
     <ConversationConsole
       investigation={investigation}
       runtime={runtime}
       highlightId={highlightId}
-      onGenerateReport={handleReport}
     />
   );
 
-  const analysis = (
-    <AnalysisPanel
+  const killChain = (
+    <KillChainTimeline
       stages={runtime.stages}
-      tactics={runtime.tactics}
       messages={runtime.messages}
+      tactics={runtime.tactics}
     />
+  );
+
+  const strategy = (
+    <AiStrategyPanel
+      runtime={runtime}
+      investigation={investigation}
+      onSend={(text) => void send(text)}
+    />
+  );
+
+  const tacticsList = (
+    <DetectedTactics tactics={runtime.tactics} messageNumbers={messageNumbers} />
   );
 
   const evidence = (
     <EvidencePanel
       caseId={investigation.id}
+      messageNumbers={messageNumbers}
       onOpenItem={setOpenEvidenceId}
       onOpenSource={openSource}
       footer={
@@ -121,7 +142,7 @@ export default function InvestigationWorkspacePage() {
             to={`/evidence?case=${investigation.id}`}
             className="font-mono text-[9px] uppercase tracking-wider text-jcyan hover:text-jtext"
           >
-            full locker →
+            full archive →
           </Link>
         </div>
       }
@@ -132,115 +153,101 @@ export default function InvestigationWorkspacePage() {
     <div className="flex h-[calc(100dvh-3.5rem)] flex-col overflow-hidden">
       <WorkspaceHeader
         investigation={investigation}
-        status={runtime.status}
-        startedAt={runtime.startedAt}
-        endedAt={runtime.endedAt}
-        evidenceCount={runtime.evidence.length}
-        activeStage={activeStage}
+        runtime={runtime}
         onPause={() => togglePause(investigation.id)}
-        onEnd={() => endInvestigation(investigation.id)}
+        onEnd={handleEnd}
         onReset={() => resetCase(investigation.id)}
         onReport={handleReport}
       />
 
-      {/* Desktop (xl+): 4-column investigation console */}
-      <div className="hidden min-h-0 flex-1 grid-cols-[236px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.85fr)] gap-2 p-2 xl:grid">
-        {/* Left rail: case navigation + kill chain */}
+      {/* Desktop (xl+): 43 / 30 / 27 workspace */}
+      <div className="hidden min-h-0 flex-1 grid-cols-[minmax(0,43fr)_minmax(0,30fr)_minmax(0,27fr)] gap-2 p-2 xl:grid">
+        {conversation}
         <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
-          <Panel label={<p className="jaal-label">Case navigation</p>} bodyClassName="p-2.5">
-            <dl className="space-y-1.5">
-              {[
-                ["Case ID", investigation.id],
-                ["Category", investigation.category],
-                ["Source", investigation.source],
-                ["Mode", investigation.detectionMode],
-              ].map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between gap-2">
-                  <dt className="jaal-label !text-[9px]">{k}</dt>
-                  <dd className="truncate font-mono text-[10px] text-jtext">{v}</dd>
-                </div>
-              ))}
-            </dl>
-            <div className="mt-2.5 flex flex-wrap gap-1">
-              {(
-                [
-                  ["tactics", investigation.flags.tacticDetection],
-                  ["identifiers", investigation.flags.identifierExtraction],
-                  ["hashing", investigation.flags.integrityHashing],
-                ] as const
-              ).map(([k, on]) => (
-                <Chip
-                  key={k}
-                  tone={
-                    on
-                      ? "border-jgreen/40 bg-jgreen/10 text-jgreen"
-                      : "border-jborder/60 text-jmuted/70"
-                  }
-                >
-                  {k} {on ? "on" : "off"}
-                </Chip>
-              ))}
-            </div>
-            <div className="mt-2.5 grid grid-cols-2 gap-1.5">
-              <Link
-                to="/evidence"
-                className="border border-jborder/60 px-2 py-1 text-center font-mono text-[9px] uppercase tracking-wider text-jmuted transition-colors hover:border-jcyan/50 hover:text-jcyan"
-              >
-                Locker
-              </Link>
-              <Link
-                to="/reports"
-                className="border border-jborder/60 px-2 py-1 text-center font-mono text-[9px] uppercase tracking-wider text-jmuted transition-colors hover:border-jcyan/50 hover:text-jcyan"
-              >
-                Reports
-              </Link>
-            </div>
+          <Panel
+            label={
+              <div className="flex items-center gap-2">
+                <Brain className="size-3.5 text-jcyan" />
+                <p className="jaal-label !text-jcyan">AI analysis</p>
+              </div>
+            }
+            right={
+              <span className="font-mono text-[8px] uppercase tracking-widest text-jmuted/70">
+                local engine · simulation
+              </span>
+            }
+          >
+            <AiAnalysisPanel runtime={runtime} />
+          </Panel>
+
+          <Panel
+            label={
+              <p className="jaal-label !text-jcyan">AI investigation strategy</p>
+            }
+          >
+            {strategy}
           </Panel>
 
           <Panel
             label={
               <div className="flex items-center gap-2">
-                <p className="jaal-label">Scam kill-chain</p>
+                <p className="jaal-label !text-jcyan">Scam kill-chain</p>
                 <span className="font-mono text-[9px] text-jmuted">
                   {runtime.stages.filter((s) => s.status !== "pending").length}/5
                 </span>
               </div>
             }
-            bodyClassName="min-h-0"
+            bodyClassName="p-2"
           >
             {killChain}
           </Panel>
-        </div>
 
-        {conversation}
-        <div className="min-h-0">{analysis}</div>
+          <Panel
+            label={<p className="jaal-label !text-jcyan">Detected tactics</p>}
+            right={
+              <span className="font-mono text-[10px] text-jamber">
+                {runtime.tactics.length} hit{runtime.tactics.length === 1 ? "" : "s"}
+              </span>
+            }
+            bodyClassName="max-h-64 overflow-y-auto"
+          >
+            {tacticsList}
+          </Panel>
+        </div>
         {evidence}
       </div>
 
       {/* Tablet (lg–xl): two columns */}
       <div className="hidden min-h-0 flex-1 grid-cols-2 gap-2 p-2 lg:grid xl:hidden">
-        <div className="flex min-h-0 flex-col gap-2">
-          <div className="min-h-0 flex-1">{conversation}</div>
-        </div>
+        <div className="flex min-h-0 flex-col">{conversation}</div>
         <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
           <Panel
             label={
               <div className="flex items-center gap-2">
-                <p className="jaal-label">Scam kill-chain</p>
+                <p className="jaal-label !text-jcyan">Scam kill-chain</p>
                 <span className="font-mono text-[9px] text-jmuted">
                   {runtime.stages.filter((s) => s.status !== "pending").length}/5
                 </span>
               </div>
             }
+            bodyClassName="p-2"
           >
             {killChain}
           </Panel>
-          {analysis}
+          <Panel label={<p className="jaal-label !text-jcyan">AI investigation strategy</p>}>
+            {strategy}
+          </Panel>
+          <Panel
+            label={<p className="jaal-label !text-jcyan">Detected tactics</p>}
+            bodyClassName="max-h-60 overflow-y-auto"
+          >
+            {tacticsList}
+          </Panel>
           <div className="flex min-h-0 flex-col">{evidence}</div>
         </div>
       </div>
 
-      {/* Mobile: tabs */}
+      {/* Mobile: CHAT | AI ANALYSIS | EVIDENCE | LOGS */}
       <div className="flex min-h-0 flex-1 flex-col lg:hidden">
         <div className="flex shrink-0 border-b border-jborder/60 bg-jsurface/70">
           {TABS.map((t) => (
@@ -264,24 +271,49 @@ export default function InvestigationWorkspacePage() {
           ))}
         </div>
         <div className="min-h-0 flex-1 p-2">
-          {mobileTab === "conversation" && (
+          {mobileTab === "chat" && (
             <div className="flex h-full min-h-0 flex-col">{conversation}</div>
           )}
           {mobileTab === "analysis" && (
-            <div className="flex h-full min-h-0 flex-col gap-2">
+            <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto">
+              <div className="flex flex-wrap items-center gap-2 border border-jamber/40 bg-jamber/10 px-3 py-2">
+                <span className="jaal-label !text-[9px]">Current stage</span>
+                <span className="font-mono text-[11px] font-semibold text-jamber">
+                  {activeStage
+                    ? activeStage.label
+                    : STAGE_LABELS[investigation.currentStage]}
+                </span>
+                {activeStage && (
+                  <Chip tone={STAGE_STATUS_TONE[activeStage.status]} className="!px-1.5 !text-[8px]">
+                    {activeStage.status}
+                  </Chip>
+                )}
+              </div>
+              <Panel label={<p className="jaal-label !text-jcyan">AI next move</p>}>
+                {strategy}
+              </Panel>
               <Panel
                 label={
                   <div className="flex items-center gap-2">
-                    <p className="jaal-label">Scam kill-chain</p>
+                    <p className="jaal-label !text-jcyan">Kill-chain</p>
                     <span className="font-mono text-[9px] text-jmuted">
                       {runtime.stages.filter((s) => s.status !== "pending").length}/5
                     </span>
                   </div>
                 }
+                bodyClassName="p-2"
               >
                 {killChain}
               </Panel>
-              <div className="min-h-0 flex-1">{analysis}</div>
+              <Panel label={<p className="jaal-label !text-jcyan">AI analysis</p>}>
+                <AiAnalysisPanel runtime={runtime} />
+              </Panel>
+              <Panel
+                label={<p className="jaal-label !text-jcyan">Detected tactics</p>}
+                bodyClassName="max-h-72 overflow-y-auto"
+              >
+                {tacticsList}
+              </Panel>
             </div>
           )}
           {mobileTab === "evidence" && <div className="h-full">{evidence}</div>}
@@ -293,7 +325,7 @@ export default function InvestigationWorkspacePage() {
         </div>
       </div>
 
-      {/* Bottom console (desktop) */}
+      {/* Bottom console (desktop/tablet) */}
       <div className="hidden lg:block">
         <BottomConsole caseId={investigation.id} />
       </div>

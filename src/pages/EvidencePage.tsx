@@ -1,43 +1,48 @@
-import { EvidenceCard } from "@/components/evidence/EvidenceCard";
 import { EvidenceDrawer } from "@/components/evidence/EvidenceDrawer";
-import { StatTile } from "@/components/dashboard/StatTile";
-import { Chip, Panel } from "@/components/ui/panel";
+import { EVIDENCE_ICON } from "@/components/evidence/EvidenceCard";
+import { Chip } from "@/components/ui/panel";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useJaal } from "@/state/JaalProvider";
 import { evidenceMatchesFilter } from "@/services/evidenceService";
 import type { EvidenceFilter, EvidenceItem } from "@/types/evidence";
+import { formatDateTime, formatClock } from "@/utils/formatters";
 import { motion } from "framer-motion";
-import {
-  ExternalLink,
-  Fingerprint,
-  Search,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldQuestion,
-} from "lucide-react";
+import { Fingerprint, Search, ShieldCheck, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Input } from "@/components/ui/input";
 
-const FILTERS: { id: EvidenceFilter; label: string }[] = [
+const TYPE_FILTERS: { id: EvidenceFilter; label: string }[] = [
   { id: "all", label: "All evidence" },
   { id: "upi", label: "UPI / payment" },
   { id: "phone", label: "Phone numbers" },
-  { id: "url", label: "Links" },
-  { id: "message", label: "Messages" },
+  { id: "url", label: "Links & refs" },
+  { id: "message", label: "Scam messages" },
   { id: "transcript", label: "Transcripts" },
-  { id: "verified", label: "Verified" },
-  { id: "unverified", label: "Unverified" },
 ];
 
+const VERIFY_FILTERS = [
+  { id: "all", label: "Any status" },
+  { id: "verified", label: "Verified" },
+  { id: "unverified", label: "Unverified" },
+] as const;
+
+type VerifyFilter = (typeof VERIFY_FILTERS)[number]["id"];
+
+/**
+ * SCREEN 6 — EVIDENCE ARCHIVE.
+ *
+ * Filter sidebar (left), dense evidence table (center) and a detail drawer
+ * (right sheet) for the selected item.
+ */
 export default function EvidencePage() {
   const { state } = useJaal();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
-  const [filter, setFilter] = useState<EvidenceFilter>("all");
   const [query, setQuery] = useState("");
-  // Case filter is derived from the URL so it survives refresh/back.
+  const [typeFilter, setTypeFilter] = useState<EvidenceFilter>("all");
+  const [verifyFilter, setVerifyFilter] = useState<VerifyFilter>("all");
   const caseFilter = params.get("case") ?? "all";
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -53,7 +58,10 @@ export default function EvidencePage() {
     const q = query.trim().toLowerCase();
     return all
       .filter(({ caseId }) => caseFilter === "all" || caseId === caseFilter)
-      .filter(({ item }) => evidenceMatchesFilter(item, filter))
+      .filter(({ item }) => evidenceMatchesFilter(item, typeFilter))
+      .filter(({ item }) =>
+        verifyFilter === "all" ? true : evidenceMatchesFilter(item, verifyFilter),
+      )
       .filter(
         ({ item }) =>
           !q ||
@@ -62,21 +70,26 @@ export default function EvidencePage() {
           item.sourceMessageText.toLowerCase().includes(q) ||
           item.caseId.toLowerCase().includes(q),
       );
-  }, [all, filter, query, caseFilter]);
+  }, [all, typeFilter, verifyFilter, query, caseFilter]);
 
-  const summary = useMemo(() => {
-    const items = all.map((x) => x.item);
+  const counts = useMemo(() => {
+    const byType = new Map<string, number>();
+    for (const { item } of all) byType.set(item.type, (byType.get(item.type) ?? 0) + 1);
     return {
-      collected: items.length,
-      hashed: items.filter((e) => e.hash).length,
-      verified: items.filter((e) => e.hashStatus === "verified").length,
-      mismatched: items.filter((e) => e.hashStatus === "mismatch").length,
-      unverified: items.filter((e) => e.hashStatus === "none").length,
+      byType,
+      verified: all.filter((x) => x.item.hashStatus === "verified").length,
+      mismatched: all.filter((x) => x.item.hashStatus === "mismatch").length,
+      unhashed: all.filter((x) => !x.item.hash).length,
     };
   }, [all]);
 
-  const openItem = all.find((x) => x.item.id === openId)?.item ?? null;
-  const openItemCase = openItem?.caseId ?? "";
+  const caseCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const { caseId } of all) m.set(caseId, (m.get(caseId) ?? 0) + 1);
+    return m;
+  }, [all]);
+
+  const open = all.find((x) => x.item.id === openId) ?? null;
 
   const selectCase = (next: string) => {
     const p = new URLSearchParams(params);
@@ -91,197 +104,328 @@ export default function EvidencePage() {
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="mb-5"
+        className="mb-4"
       >
         <p className="jaal-label">Chain of custody · local evidence store</p>
         <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-jtext sm:text-3xl">
-              Evidence locker
+            <h1 className="font-mono text-2xl font-semibold uppercase tracking-[0.22em] text-jtext sm:text-3xl">
+              Evidence archive
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-jmuted">
-              Search extracted identifiers, review their source messages and
-              verify content integrity with SHA-256. Synthetic demo data —
-              labelled leads, never confirmed suspects.
+              Search extracted identifiers, review source messages and verify
+              content integrity with SHA-256.{" "}
+              <span className="text-jamber">
+                Synthetic demo data — labelled leads, never confirmed suspects.
+              </span>
             </p>
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {state.investigations.map((inv) => (
-              <button
-                key={inv.id}
-                type="button"
-                onClick={() => selectCase(caseFilter === inv.id ? "all" : inv.id)}
-                className={cn(
-                  "border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors",
-                  caseFilter === inv.id
-                    ? "border-jcyan/60 bg-jcyan/15 text-jcyan"
-                    : "border-jborder/70 text-jmuted hover:border-jcyan/40 hover:text-jtext",
-                )}
-              >
-                {inv.id}
-              </button>
-            ))}
+          {/* Header filters — search, type, verification, case */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-jmuted" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search value, source, case…"
+                className="h-8 w-56 border-jborder/70 bg-jsurface pl-8 font-mono text-xs text-jtext placeholder:text-jmuted/50 focus-visible:border-jcyan/70 focus-visible:ring-jcyan/40"
+              />
+            </div>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as EvidenceFilter)}
+              className="h-8 border border-jborder/70 bg-jsurface px-2 font-mono text-[10px] uppercase tracking-wider text-jtext outline-none focus:border-jcyan/70"
+            >
+              {TYPE_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={verifyFilter}
+              onChange={(e) => setVerifyFilter(e.target.value as VerifyFilter)}
+              className="h-8 border border-jborder/70 bg-jsurface px-2 font-mono text-[10px] uppercase tracking-wider text-jtext outline-none focus:border-jcyan/70"
+            >
+              {VERIFY_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={caseFilter}
+              onChange={(e) => selectCase(e.target.value)}
+              className="h-8 border border-jborder/70 bg-jsurface px-2 font-mono text-[10px] uppercase tracking-wider text-jtext outline-none focus:border-jcyan/70"
+            >
+              <option value="all">All cases</option>
+              {state.investigations.map((inv) => (
+                <option key={inv.id} value={inv.id}>
+                  {inv.id}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </motion.header>
 
-      {/* Integrity summary */}
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile
-          label="Evidence collected"
-          value={summary.collected}
-          hint="All extracted items"
-          tone="text-jcyan"
-          bar="bg-jcyan"
-          icon={<Fingerprint className="size-4" />}
-        />
-        <StatTile
-          label="Hash generated"
-          value={summary.hashed}
-          hint={`${summary.unverified} without hash`}
-          tone="text-jteal"
-          bar="bg-jteal"
-          icon={<ShieldQuestion className="size-4" />}
-        />
-        <StatTile
-          label="Integrity verified"
-          value={summary.verified}
-          hint="Content matches recorded hash"
-          tone="text-jgreen"
-          bar="bg-jgreen"
-          icon={<ShieldCheck className="size-4" />}
-        />
-        <StatTile
-          label="Hash mismatch"
-          value={summary.mismatched}
-          hint="Content changed since recording"
-          tone="text-jred"
-          bar="bg-jred"
-          icon={<ShieldAlert className="size-4" />}
-        />
-      </div>
-
-      <Panel
-        right={
-          <div className="relative w-full max-w-64">
-            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-jmuted" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search value, source, case…"
-              className="h-8 border-jborder/70 bg-jsurface pl-8 font-mono text-xs text-jtext placeholder:text-jmuted/50 focus-visible:border-jcyan/70 focus-visible:ring-jcyan/40"
-            />
-          </div>
-        }
-        bodyClassName="p-3"
-      >
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setFilter(f.id)}
-              className={cn(
-                "border px-2 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors",
-                filter === f.id
-                  ? "border-jcyan/60 bg-jcyan/15 text-jcyan"
-                  : "border-jborder/70 text-jmuted hover:border-jcyan/40 hover:text-jtext",
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-          <Chip tone="border-jborder/70 bg-jsurface text-jmuted" className="ml-auto">
-            {filtered.length} shown
-          </Chip>
-        </div>
-
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-            <Fingerprint className="size-7 text-jmuted/50" />
-            <p className="text-sm text-jmuted">
-              No evidence matches these filters.
-            </p>
-            <p className="max-w-sm text-[11px] leading-relaxed text-jmuted/70">
-              Evidence is extracted automatically while a simulation runs — open
-              an investigation and let the conversation progress.
-            </p>
-            <Link
-              to="/investigations"
-              className="mt-1 border border-jcyan/50 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-jcyan transition-colors hover:bg-jcyan/10"
-            >
-              Open investigations
-            </Link>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {filtered.map(({ item, caseId }) => (
-              <div key={item.id} className="flex flex-col gap-1.5">
-                <EvidenceCard
-                  item={item}
-                  onOpen={() => setOpenId(item.id)}
-                  onOpenSource={
-                    item.sourceMessageId
-                      ? () =>
-                          navigate(
-                            `/investigations/${caseId}?msg=${item.sourceMessageId}`,
-                          )
-                      : undefined
-                  }
-                />
-                <div className="flex items-center justify-between px-0.5">
-                  <span className="font-mono text-[9px] uppercase tracking-widest text-jcyan/70">
-                    {caseId}
+      <div className="grid gap-4 lg:grid-cols-[210px_minmax(0,1fr)]">
+        {/* LEFT — filter sidebar */}
+        <aside className="jaal-panel h-fit p-3">
+          <p className="jaal-label mb-2">Evidence categories</p>
+          <ul className="space-y-1">
+            {TYPE_FILTERS.map((f) => (
+              <li key={f.id}>
+                <button
+                  type="button"
+                  onClick={() => setTypeFilter(f.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 border px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-wider transition-colors",
+                    typeFilter === f.id
+                      ? "border-jcyan/60 bg-jcyan/10 text-jcyan"
+                      : "border-transparent text-jmuted hover:border-jborder/70 hover:text-jtext",
+                  )}
+                >
+                  <span>{f.label}</span>
+                  <span className="tabular-nums opacity-70">
+                    {f.id === "all"
+                      ? all.length
+                      : (() => {
+                          let n = 0;
+                          for (const { item } of all)
+                            if (evidenceMatchesFilter(item, f.id)) n += 1;
+                          return n;
+                        })()}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/investigations/${caseId}`)}
-                    className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-jmuted transition-colors hover:text-jcyan"
-                  >
-                    <ExternalLink className="size-3" /> open case
-                  </button>
-                </div>
-              </div>
+                </button>
+              </li>
             ))}
-          </div>
-        )}
-      </Panel>
+          </ul>
 
-      {/* Integrity explainer */}
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
-        {[
-          {
-            title: "Evidence collected",
-            body: "An identifier or message is captured with its source context. It is an unverified lead at this point.",
-            tone: "text-jcyan border-jcyan/40",
-          },
-          {
-            title: "Hash generated",
-            body: "A SHA-256 digest of the stored content is recorded with a timestamp for later comparison.",
-            tone: "text-jteal border-jteal/40",
-          },
-          {
-            title: "Hash verified",
-            body: "Content is re-hashed and compared. A match proves the bytes are unchanged — not authenticity or guilt.",
-            tone: "text-jgreen border-jgreen/40",
-          },
-        ].map((c) => (
-          <div key={c.title} className={`border bg-jsurface/70 p-3 ${c.tone}`}>
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em]">
-              {c.title}
+          <p className="jaal-label mb-2 mt-4">Verification</p>
+          <ul className="space-y-1">
+            {VERIFY_FILTERS.map((f) => (
+              <li key={f.id}>
+                <button
+                  type="button"
+                  onClick={() => setVerifyFilter(f.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 border px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-wider transition-colors",
+                    verifyFilter === f.id
+                      ? "border-jcyan/60 bg-jcyan/10 text-jcyan"
+                      : "border-transparent text-jmuted hover:border-jborder/70 hover:text-jtext",
+                  )}
+                >
+                  <span>{f.label}</span>
+                  <span className="tabular-nums opacity-70">
+                    {f.id === "verified"
+                      ? counts.verified
+                      : f.id === "unverified"
+                        ? all.length - counts.verified
+                        : all.length}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {counts.mismatched > 0 && (
+            <div className="mt-3 flex items-center gap-1.5 border border-jred/50 bg-jred/10 px-2 py-1.5">
+              <ShieldAlert className="size-3.5 shrink-0 text-jred" />
+              <span className="font-mono text-[9px] uppercase tracking-wider text-jred">
+                {counts.mismatched} hash mismatch
+              </span>
+            </div>
+          )}
+
+          <p className="jaal-label mb-2 mt-4">Case selection</p>
+          <ul className="space-y-1">
+            <li>
+              <button
+                type="button"
+                onClick={() => selectCase("all")}
+                className={cn(
+                  "flex w-full items-center justify-between gap-2 border px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-wider transition-colors",
+                  caseFilter === "all"
+                    ? "border-jcyan/60 bg-jcyan/10 text-jcyan"
+                    : "border-transparent text-jmuted hover:border-jborder/70 hover:text-jtext",
+                )}
+              >
+                <span>All cases</span>
+                <span className="tabular-nums opacity-70">{all.length}</span>
+              </button>
+            </li>
+            {state.investigations.map((inv) => (
+              <li key={inv.id}>
+                <button
+                  type="button"
+                  onClick={() => selectCase(inv.id)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 border px-2 py-1.5 text-left font-mono text-[10px] uppercase tracking-wider transition-colors",
+                    caseFilter === inv.id
+                      ? "border-jcyan/60 bg-jcyan/10 text-jcyan"
+                      : "border-transparent text-jmuted hover:border-jborder/70 hover:text-jtext",
+                  )}
+                >
+                  <span className="truncate">{inv.id}</span>
+                  <span className="tabular-nums opacity-70">
+                    {caseCounts.get(inv.id) ?? 0}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </aside>
+
+        {/* CENTER — dense evidence table */}
+        <section className="jaal-panel min-w-0 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-jborder/70 px-3 py-2">
+            <p className="jaal-label !text-jcyan mb-0">
+              Evidence records
             </p>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-jmuted">
-              {c.body}
-            </p>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-jmuted">
+              {filtered.length} / {all.length} shown
+            </span>
           </div>
-        ))}
+
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+              <Fingerprint className="size-7 text-jmuted/50" />
+              <p className="text-sm text-jmuted">No evidence matches these filters.</p>
+              <p className="max-w-sm text-[11px] leading-relaxed text-jmuted/70">
+                Evidence is extracted automatically while a simulation runs —
+                open an investigation and let the conversation progress.
+              </p>
+              <Link
+                to="/investigations"
+                className="mt-1 border border-jcyan/50 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-jcyan transition-colors hover:bg-jcyan/10"
+              >
+                Open investigations
+              </Link>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[820px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-jborder/70 bg-jsurface/70">
+                    {[
+                      "Evidence ID",
+                      "Type",
+                      "Extracted value",
+                      "Case",
+                      "Source",
+                      "Timestamp",
+                      "Integrity",
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className="px-3 py-2 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-jmuted"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(({ item, caseId }) => {
+                    const srcMsg = state.sessions[caseId]?.messages.find(
+                      (m) => m.id === item.sourceMessageId,
+                    );
+                    const srcIndex = srcMsg
+                      ? state.sessions[caseId].messages.indexOf(srcMsg) + 1
+                      : null;
+                    return (
+                      <tr
+                        key={item.id}
+                        onClick={() => setOpenId(item.id)}
+                        className={cn(
+                          "cursor-pointer border-b border-jborder/40 transition-colors hover:bg-jcyan/[0.05]",
+                          openId === item.id && "bg-jcyan/[0.08]",
+                        )}
+                      >
+                        <td className="px-3 py-2 font-mono text-[10px] text-jmuted">
+                          {item.id.slice(0, 14)}…
+                        </td>
+                        <td className="px-3 py-2">
+                          {(() => {
+                            const TypeIcon = EVIDENCE_ICON[item.type];
+                            return (
+                              <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-jcyan">
+                                <TypeIcon className="size-3" />
+                                {item.label}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="max-w-[260px] truncate px-3 py-2 font-mono text-[11px] text-jtext">
+                          {item.value}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[10px] text-jcyan/80">
+                          {caseId}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[10px] text-jmuted">
+                          {srcIndex
+                            ? `MESSAGE #${String(srcIndex).padStart(2, "0")}`
+                            : "—"}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-[10px] text-jmuted">
+                          {formatClock(item.extractedAt)}
+                          <span className="ml-1 opacity-60">
+                            {formatDateTime(item.extractedAt).split(",")[0]}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={cn(
+                              "border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider",
+                              item.hashStatus === "verified"
+                                ? "border-jgreen/50 bg-jgreen/10 text-jgreen"
+                                : item.hashStatus === "mismatch"
+                                  ? "border-jred/50 bg-jred/10 text-jred"
+                                  : item.hashStatus === "generated"
+                                    ? "border-jcyan/50 bg-jcyan/10 text-jcyan"
+                                    : "border-jamber/50 bg-jamber/10 text-jamber",
+                            )}
+                          >
+                            {item.hash ? item.hashStatus : "no hash"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3 border-t border-jborder/70 px-3 py-2">
+            <Chip tone="border-jgreen/40 bg-jgreen/10 text-jgreen" className="!text-[9px]">
+              <ShieldCheck className="mr-1 inline size-3" />
+              {counts.verified} verified
+            </Chip>
+            <Chip tone="border-jcyan/40 bg-jcyan/10 text-jcyan" className="!text-[9px]">
+              {counts.unhashed} awaiting hash
+            </Chip>
+            <span className="font-mono text-[9px] uppercase tracking-widest text-jmuted/70">
+              hashes prove content integrity only — not identity, origin or guilt
+            </span>
+          </div>
+        </section>
       </div>
 
+      {/* RIGHT — detail drawer (sheet on desktop, full-screen on mobile) */}
       <EvidenceDrawer
         open={openId !== null}
         onOpenChange={(o) => !o && setOpenId(null)}
-        item={openItem}
-        caseId={openItemCase}
+        item={open?.item ?? null}
+        caseId={open?.caseId ?? ""}
+        onOpenSource={
+          open?.item.sourceMessageId
+            ? () =>
+                navigate(
+                  `/investigations/${open.caseId}?msg=${open.item.sourceMessageId}`,
+                )
+            : undefined
+        }
       />
     </div>
   );

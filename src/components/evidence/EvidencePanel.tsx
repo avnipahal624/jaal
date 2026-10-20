@@ -20,11 +20,14 @@ export function EvidencePanel({
   onOpenItem,
   onOpenSource,
   footer,
+  messageNumbers,
 }: {
   caseId: string;
   onOpenItem: (id: string) => void;
   onOpenSource?: (messageId: string) => void;
   footer?: React.ReactNode;
+  /** message id → MSG #NN */
+  messageNumbers?: Record<string, number>;
 }) {
   const { all, filtered, filter, setFilter, query, setQuery } = useEvidence(caseId);
 
@@ -36,7 +39,7 @@ export function EvidencePanel({
       label={
         <div className="flex items-center gap-2">
           <Fingerprint className="size-3.5 text-jcyan" />
-          <p className="jaal-label">Evidence locker</p>
+          <p className="jaal-label !text-jcyan">Evidence locker</p>
           <Chip tone="border-jcyan/40 bg-jcyan/10 text-jcyan">{all.length}</Chip>
         </div>
       }
@@ -101,6 +104,11 @@ export function EvidencePanel({
             <EvidenceCard
               key={item.id}
               item={item}
+              sourceNumber={
+                item.sourceMessageId
+                  ? messageNumbers?.[item.sourceMessageId]
+                  : undefined
+              }
               onOpen={() => onOpenItem(item.id)}
               onOpenSource={
                 onOpenSource && item.sourceMessageId

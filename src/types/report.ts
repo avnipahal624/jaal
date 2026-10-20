@@ -10,6 +10,13 @@ export interface ReportEvidenceRow {
   hashStatus: string;
 }
 
+export interface ReportSummary {
+  scenario: string;
+  tactics: string;
+  payment: string;
+  moments: { timestamp: number; label: string; text: string }[];
+}
+
 export interface ReportIntegritySummary {
   collected: number;
   hashed: number;
@@ -32,6 +39,10 @@ export interface EvidenceReport {
   evidenceCount: number;
   integrity: ReportIntegritySummary;
   description: string;
+  /** Executive summary derived from the actual session */
+  summary: ReportSummary;
+  /** What this investigation never established */
+  unknowns: string[];
   transcript: {
     author: string;
     text: string;

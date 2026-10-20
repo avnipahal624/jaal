@@ -1,24 +1,28 @@
 import type { ScamCategory, DetectionMode } from "./investigation";
 
-export type AccentIntensity = "subtle" | "standard" | "vivid";
+export type AnimationIntensity = "subtle" | "standard" | "vivid";
 export type Density = "compact" | "comfortable";
 
 export interface Settings {
   appearance: {
     /** The dark cyber-forensics theme is the default and only theme. */
     theme: "dark";
-    accentIntensity: AccentIntensity;
     density: Density;
-    animations: boolean;
+    /** Strength of pulses, sweeps and hover motion. */
+    animationIntensity: AnimationIntensity;
+    /** Honor the OS preference too; this toggle forces motion off. */
+    reducedMotion: boolean;
   };
   investigation: {
     defaultCategory: ScamCategory;
     defaultDetectionMode: DetectionMode;
     autoExtract: boolean;
     autoHash: boolean;
+    /** AI next-move suggestions in the investigation workspace. */
+    aiSuggestions: boolean;
   };
   simulation: {
-    /** Ambient simulated activity (typing, feed ticks) */
+    /** Automated simulation messages / ambient activity */
     simulatedActivity: boolean;
   };
 }
@@ -26,15 +30,16 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   appearance: {
     theme: "dark",
-    accentIntensity: "standard",
     density: "comfortable",
-    animations: true,
+    animationIntensity: "standard",
+    reducedMotion: false,
   },
   investigation: {
     defaultCategory: "Digital arrest scam",
     defaultDetectionMode: "simulation",
     autoExtract: true,
     autoHash: true,
+    aiSuggestions: true,
   },
   simulation: {
     simulatedActivity: true,
