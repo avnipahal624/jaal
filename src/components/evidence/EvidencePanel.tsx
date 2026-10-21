@@ -1,10 +1,12 @@
-import { EvidenceCard } from "@/components/evidence/EvidenceCard";
+import { EVIDENCE_ICON } from "@/components/evidence/EvidenceCard";
 import { Chip, Panel } from "@/components/ui/panel";
 import { useEvidence } from "@/hooks/useEvidence";
 import { cn } from "@/lib/utils";
-import type { EvidenceFilter } from "@/types/evidence";
+import type { EvidenceFilter, EvidenceItem } from "@/types/evidence";
 import { Fingerprint, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { motion } from "framer-motion";
+import { formatClock } from "@/utils/formatters";
 
 const FILTERS: { id: EvidenceFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -15,16 +17,97 @@ const FILTERS: { id: EvidenceFilter; label: string }[] = [
   { id: "unverified", label: "Unverified" },
 ];
 
+const HASH_DOT: Record<EvidenceItem["hashStatus"], string> = {
+  none: "bg-jmuted/50",
+  generated: "bg-jcyan",
+  verified: "bg-jgreen",
+  mismatch: "bg-jred",
+};
+
+const HASH_TEXT: Record<EvidenceItem["hashStatus"], string> = {
+  none: "unverified",
+  generated: "hashed",
+  verified: "verified",
+  mismatch: "mismatch",
+};
+
+const HASH_TEXT_COLOR: Record<EvidenceItem["hashStatus"], string> = {
+  none: "text-jmuted",
+  generated: "text-jcyan",
+  verified: "text-jgreen",
+  mismatch: "text-jred",
+};
+
+/** Compact evidence row: type, value, source message, timestamp, integrity. */
+function EvidenceRow({
+  item,
+  sourceNumber,
+  onOpen,
+}: {
+  item: EvidenceItem;
+  sourceNumber?: number;
+  onOpen: () => void;
+}) {
+  const Icon = EVIDENCE_ICON[item.type] ?? Fingerprint;
+  return (
+    <motion.button
+      type="button"
+      layout
+      initial={{ opacity: 0, x: -6 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+      onClick={onOpen}
+      className={cn(
+        "flex w-full items-start gap-2 border-l-2 bg-jsurface/40 px-2 py-1.5 text-left transition-colors hover:bg-white/[0.03]",
+        item.hashStatus === "mismatch"
+          ? "border-l-jred/70"
+          : "border-l-jcyan/60",
+      )}
+    >
+      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center border border-jborder/60 text-jcyan">
+        <Icon className="size-2.5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-[11px] font-medium text-jtext">
+            {item.value}
+          </span>
+          <span
+            className={cn(
+              "flex shrink-0 items-center gap-1 font-mono text-[8px] uppercase tracking-wider",
+              HASH_TEXT_COLOR[item.hashStatus],
+            )}
+          >
+            <span
+              className={cn("size-1", HASH_DOT[item.hashStatus])}
+              aria-hidden
+            />
+            {HASH_TEXT[item.hashStatus]}
+          </span>
+        </span>
+        <span className="mt-0.5 flex items-center gap-1.5 font-mono text-[8px] uppercase tracking-widest text-jmuted">
+          <span className="text-jmuted/80">{item.label}</span>
+          {sourceNumber !== undefined && (
+            <span>
+              · msg #
+              {String(sourceNumber).padStart(2, "0")}
+            </span>
+          )}
+          <span>· {formatClock(item.extractedAt)}</span>
+        </span>
+      </span>
+    </motion.button>
+  );
+}
+
 export function EvidencePanel({
   caseId,
   onOpenItem,
-  onOpenSource,
   footer,
   messageNumbers,
 }: {
   caseId: string;
   onOpenItem: (id: string) => void;
-  onOpenSource?: (messageId: string) => void;
   footer?: React.ReactNode;
   /** message id → MSG #NN */
   messageNumbers?: Record<string, number>;
@@ -57,7 +140,8 @@ export function EvidencePanel({
       className="min-h-0 flex-1"
       bodyClassName="flex min-h-0 flex-col"
     >
-      <div className="shrink-0 space-y-2 border-b border-jborder/50 p-2">
+      {/* Compact search + filters */}
+      <div className="shrink-0 space-y-1.5 border-b border-jborder/50 p-2">
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-jmuted" />
           <Input
@@ -86,22 +170,34 @@ export function EvidencePanel({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center gap-1.5 py-10 text-center">
-            <Fingerprint className="size-5 text-jmuted/50" />
-            <p className="text-xs text-jmuted">
-              {all.length === 0
-                ? "No evidence extracted yet."
-                : "Nothing matches this filter."}
-            </p>
-            <p className="font-mono text-[9px] uppercase tracking-widest text-jmuted/60">
-              items appear as scammer messages arrive
-            </p>
-          </div>
+          all.length === 0 ? (
+            /* Useful empty state — explains what will appear here */
+            <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
+              <span className="flex size-8 items-center justify-center border border-jborder/60 bg-jsurface">
+                <Fingerprint className="size-4 text-jmuted/60" />
+              </span>
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-jtext">
+                No identifiers extracted
+              </p>
+              <p className="max-w-[260px] text-[11px] leading-relaxed text-jmuted">
+                Evidence will appear here when JAAL identifies a phone number,
+                UPI ID, URL, payment amount, or relevant statement in the
+                conversation.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1.5 py-10 text-center">
+              <p className="text-xs text-jmuted">Nothing matches this filter.</p>
+              <p className="font-mono text-[9px] uppercase tracking-widest text-jmuted/60">
+                adjust the search or filters above
+              </p>
+            </div>
+          )
         ) : (
           filtered.map((item) => (
-            <EvidenceCard
+            <EvidenceRow
               key={item.id}
               item={item}
               sourceNumber={
@@ -110,17 +206,14 @@ export function EvidencePanel({
                   : undefined
               }
               onOpen={() => onOpenItem(item.id)}
-              onOpenSource={
-                onOpenSource && item.sourceMessageId
-                  ? () => onOpenSource(item.sourceMessageId!)
-                  : undefined
-              }
             />
           ))
         )}
       </div>
 
-      {footer && <div className="shrink-0 border-t border-jborder/50 p-2">{footer}</div>}
+      {footer && (
+        <div className="shrink-0 border-t border-jborder/50 p-2">{footer}</div>
+      )}
     </Panel>
   );
 }

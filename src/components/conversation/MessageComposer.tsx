@@ -42,7 +42,7 @@ export function MessageComposer({
   };
 
   return (
-    <div className="shrink-0 border-t border-jborder/60 bg-jsurface/70 p-2.5">
+    <div className="shrink-0 border-t border-jborder/60 bg-jsurface/70 p-2">
       {disabled ? (
         <div className="flex items-center gap-2 border border-jamber/40 bg-jamber/10 px-3 py-2">
           <span className="size-1.5 bg-jamber jaal-pulse" />
@@ -50,23 +50,31 @@ export function MessageComposer({
         </div>
       ) : (
         <>
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {suggestions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  if (!busy) onSend(s);
-                }}
-                className="flex items-center gap-1 border border-jborder/70 bg-jsurface px-2 py-1 text-[10px] text-jmuted transition-colors hover:border-jcyan/50 hover:text-jcyan disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Play className="size-2.5 text-jcyan" />
-                {s}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-end gap-2">
+          {/* Small contextual suggestion area — the strategy panel is the
+              main place to review and approve suggested questions. */}
+          {suggestions.length > 0 && (
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <span className="hidden shrink-0 font-mono text-[8px] uppercase tracking-widest text-jmuted/60 sm:inline">
+                contextual
+              </span>
+              {suggestions.slice(0, 2).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!busy) onSend(s);
+                  }}
+                  title={s}
+                  className="min-w-0 max-w-[48%] truncate border border-jborder/70 bg-jsurface px-2 py-0.5 text-[10px] text-jmuted transition-colors hover:border-jcyan/50 hover:text-jcyan disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Play className="mr-1 inline size-2 text-jcyan" />
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex items-end gap-1.5">
             <input
               ref={fileRef}
               type="file"

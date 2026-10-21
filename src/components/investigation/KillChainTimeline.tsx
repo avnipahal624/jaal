@@ -34,8 +34,12 @@ const STAGE_ICON: Record<string, LucideIcon> = {
 };
 
 /**
- * Connected horizontal kill-chain timeline. Statuses derive from actual
- * message-content detections; the active stage glows amber.
+ * Connected kill-chain timeline.
+ *
+ * Horizontal (five connected stages) when the panel is wide enough, vertical
+ * on narrow panels and mobile. Statuses derive from actual message-content
+ * detections; the active stage is amber, completed stages muted teal, pending
+ * stages subdued. Each stage shows its supporting MSG reference.
  */
 export function KillChainTimeline({
   stages,
@@ -48,26 +52,40 @@ export function KillChainTimeline({
 }) {
   const [openStage, setOpenStage] = useState<KillChainStage | null>(null);
 
+  const numberMap = new Map(messages.map((m, i) => [m.id, i + 1]));
+  const refFor = (stage: KillChainStage): number | null => {
+    const last = stage.messageIds[stage.messageIds.length - 1];
+    return last ? (numberMap.get(last) ?? null) : null;
+  };
+
+  const toneFor = (stage: KillChainStage) => {
+    const isActive = stage.status === "active";
+    const isDone = stage.status === "completed" || stage.status === "detected";
+    return { isActive, isDone };
+  };
+
   return (
     <>
-      <div className="overflow-x-auto pb-1 no-scrollbar">
-        <ol className="flex min-w-max items-stretch gap-0">
+      <div className="@container p-2">
+        {/* Horizontal — wide enough panels */}
+        <ol className="hidden min-w-0 items-stretch @min-[400px]:flex">
           {stages.map((stage, i) => {
             const Icon = STAGE_ICON[stage.id] ?? MessageSquare;
-            const isActive = stage.status === "active";
-            const isDone = stage.status === "completed" || stage.status === "detected";
+            const { isActive, isDone } = toneFor(stage);
+            const ref = refFor(stage);
             return (
-              <li key={stage.id} className="flex items-center">
+              <li key={stage.id} className="flex min-w-0 flex-1 items-center">
                 <motion.button
                   type="button"
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05, duration: 0.25 }}
                   onClick={() => setOpenStage(stage)}
+                  title={`${stage.label} — ${stage.status}${ref ? ` · MSG #${String(ref).padStart(2, "0")}` : ""}`}
                   className={cn(
-                    "flex w-[104px] shrink-0 flex-col items-center gap-1 border px-1.5 py-2 text-center transition-colors",
+                    "flex min-w-0 flex-1 flex-col items-center gap-0.5 border px-1 py-1.5 text-center transition-colors",
                     isActive
-                      ? "border-jamber/60 bg-jamber/10 shadow-[0_0_14px_-6px_rgba(255,170,69,0.7)]"
+                      ? "border-jamber/60 bg-jamber/10"
                       : isDone
                         ? "border-jteal/35 bg-jteal/[0.06] hover:border-jteal/60"
                         : "border-jborder/50 bg-jsurface/60 opacity-60 hover:opacity-90",
@@ -75,7 +93,7 @@ export function KillChainTimeline({
                 >
                   <span
                     className={cn(
-                      "relative flex size-7 items-center justify-center border bg-background",
+                      "relative flex size-6 shrink-0 items-center justify-center border bg-background",
                       isActive
                         ? "border-jamber/70 text-jamber"
                         : isDone
@@ -83,14 +101,14 @@ export function KillChainTimeline({
                           : "border-jborder text-jmuted/60",
                     )}
                   >
-                    <Icon className="size-3.5" />
+                    <Icon className="size-3" />
                     {isActive && (
                       <span className="absolute -right-1 -top-1 size-1.5 bg-jamber jaal-pulse" />
                     )}
                   </span>
                   <span
                     className={cn(
-                      "font-mono text-[8px] uppercase tracking-widest",
+                      "font-mono text-[7.5px] uppercase tracking-widest",
                       isActive ? "text-jamber" : "text-jmuted/70",
                     )}
                   >
@@ -98,7 +116,7 @@ export function KillChainTimeline({
                   </span>
                   <span
                     className={cn(
-                      "text-[9.5px] font-semibold leading-tight",
+                      "w-full break-words text-[9px] font-semibold leading-tight",
                       isActive ? "text-jamber" : isDone ? "text-jtext" : "text-jmuted",
                     )}
                   >
@@ -106,21 +124,89 @@ export function KillChainTimeline({
                   </span>
                   <span
                     className={cn(
-                      "font-mono text-[7.5px] uppercase tracking-wider",
+                      "font-mono text-[7px] uppercase tracking-wider",
                       STAGE_STATUS_TONE[stage.status].split(" ").pop(),
                     )}
                   >
                     {stage.status}
                   </span>
+                  <span className="font-mono text-[7px] uppercase tracking-wider text-jmuted/60">
+                    {ref ? `msg #${String(ref).padStart(2, "0")}` : "—"}
+                  </span>
                 </motion.button>
                 {i < stages.length - 1 && (
                   <span
                     className={cn(
-                      "h-px w-3 shrink-0",
+                      "h-px w-1.5 shrink-0",
                       isDone ? "bg-jteal/50" : "bg-jborder",
                     )}
                   />
                 )}
+              </li>
+            );
+          })}
+        </ol>
+
+        {/* Vertical — narrow panels and mobile */}
+        <ol className="flex flex-col @min-[400px]:hidden">
+          {stages.map((stage, i) => {
+            const Icon = STAGE_ICON[stage.id] ?? MessageSquare;
+            const { isActive, isDone } = toneFor(stage);
+            const ref = refFor(stage);
+            return (
+              <li key={stage.id} className="flex items-stretch">
+                <span
+                  className={cn(
+                    "mx-1.5 w-px shrink-0",
+                    i === stages.length - 1 && "invisible",
+                    isDone ? "bg-jteal/40" : "bg-jborder/70",
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={() => setOpenStage(stage)}
+                  className={cn(
+                    "flex min-w-0 flex-1 items-center gap-2 py-1 pr-1 text-left transition-colors",
+                    !isActive && !isDone && "opacity-60",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-5 shrink-0 items-center justify-center border bg-background",
+                      isActive
+                        ? "border-jamber/70 text-jamber"
+                        : isDone
+                          ? "border-jteal/60 text-jteal"
+                          : "border-jborder text-jmuted/60",
+                    )}
+                  >
+                    <Icon className="size-2.5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn(
+                        "block truncate text-[11px] font-semibold leading-tight",
+                        isActive ? "text-jamber" : isDone ? "text-jtext" : "text-jmuted",
+                      )}
+                    >
+                      <span className="font-mono text-[9px] text-jmuted/70">
+                        0{stage.number}{" "}
+                      </span>
+                      {stage.label}
+                    </span>
+                  </span>
+                  <span
+                    className={cn(
+                      "shrink-0 font-mono text-[8px] uppercase tracking-wider",
+                      STAGE_STATUS_TONE[stage.status].split(" ").pop(),
+                    )}
+                  >
+                    {stage.status}
+                  </span>
+                  <span className="shrink-0 font-mono text-[8px] uppercase tracking-wider text-jmuted/60">
+                    {ref ? `msg #${String(ref).padStart(2, "0")}` : "—"}
+                  </span>
+                </button>
               </li>
             );
           })}

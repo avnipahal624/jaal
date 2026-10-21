@@ -71,7 +71,7 @@ export function DetectedTactics({
                   </span>
                 </span>
                 <span className="mt-0.5 block truncate text-[10px] text-jmuted">
-                  {truncate(t.sourceText, 72)}
+                  {truncate(t.explanation, 80)}
                 </span>
               </span>
               {isOpen ? (
@@ -81,8 +81,13 @@ export function DetectedTactics({
               )}
             </button>
             {isOpen && (
-              <div className="border-t border-jborder/40 bg-jsurface/70 px-3 py-2">
-                <p className="text-[10px] leading-relaxed text-jmuted">{t.explanation}</p>
+              <div className="space-y-1.5 border-t border-jborder/40 bg-jsurface/70 px-3 py-2">
+                <p className="text-[10px] leading-relaxed text-jmuted">
+                  {t.explanation}
+                </p>
+                <p className="border-l-2 border-jred/50 pl-2 text-[10px] leading-relaxed text-jtext/80">
+                  “{truncate(t.sourceText, 160)}”
+                </p>
               </div>
             )}
           </li>

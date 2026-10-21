@@ -13,6 +13,7 @@ import { formatElapsed } from "@/utils/formatters";
 import { motion } from "framer-motion";
 import {
   FileSignature,
+  Fingerprint,
   Flag,
   MoreHorizontal,
   Pause,
@@ -46,6 +47,7 @@ export function WorkspaceHeader({
   onEnd,
   onReset,
   onReport,
+  onOpenEvidence,
 }: {
   investigation: Investigation;
   runtime: CaseRuntime;
@@ -53,6 +55,8 @@ export function WorkspaceHeader({
   onEnd: () => void;
   onReset: () => void;
   onReport: () => void;
+  /** Tablet only — opens the evidence locker sheet. */
+  onOpenEvidence?: () => void;
 }) {
   const status = runtime.status;
   const elapsed = useElapsed(runtime.startedAt, runtime.endedAt, status === "running");
@@ -120,6 +124,15 @@ export function WorkspaceHeader({
 
         {/* Right — controls */}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {onOpenEvidence && (
+            <Button
+              size="sm"
+              onClick={onOpenEvidence}
+              className="h-7 cursor-pointer gap-1.5 border border-jcyan/50 bg-jcyan/10 px-2.5 font-mono text-[10px] uppercase tracking-wider text-jcyan hover:bg-jcyan/20 hover:text-jcyan xl:hidden"
+            >
+              <Fingerprint className="size-3" /> Evidence
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={onPause}

@@ -44,16 +44,14 @@ export function MessageRow({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
       className={cn(
-        "group relative scroll-mt-4 border-l-2 py-2 pl-3 pr-2 transition-colors",
+        "group relative scroll-mt-4 border-l-2 py-1.5 pl-3 pr-2 transition-colors",
         highlight
-          ? "ring-1 ring-jamber/70"
-          : "",
-        isScammer
-          ? "border-l-jred/70 bg-jred/[0.04] hover:bg-jred/[0.07]"
-          : "border-l-jcyan/70 bg-jcyan/[0.04] hover:bg-jcyan/[0.07]",
+          ? "bg-jamber/[0.07] ring-1 ring-jamber/70"
+          : "hover:bg-white/[0.02]",
+        isScammer ? "border-l-jred/70" : "border-l-jcyan/70",
       )}
     >
-      <div className="mb-1 flex flex-wrap items-center gap-2">
+      <div className="mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
         {number !== undefined && (
           <span className="border border-jborder/70 bg-jsurface px-1.5 py-px font-mono text-[9px] tracking-wider text-jmuted">
             MSG #{String(number).padStart(2, "0")}
