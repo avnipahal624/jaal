@@ -1,6 +1,6 @@
 import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
-import { Infer, v } from "convex/values";
+import { v } from "convex/values";
 
 // default user roles. can add / remove based on the project as needed
 export const ROLES = {
@@ -14,7 +14,26 @@ export const roleValidator = v.union(
   v.literal(ROLES.USER),
   v.literal(ROLES.MEMBER),
 );
-export type Role = Infer<typeof roleValidator>;
+
+const flagsValidator = v.object({
+  tacticDetection: v.boolean(),
+  identifierExtraction: v.boolean(),
+  integrityHashing: v.boolean(),
+  aiSuggestions: v.boolean(),
+});
+
+const runStatusValidator = v.union(
+  v.literal("running"),
+  v.literal("paused"),
+  v.literal("completed"),
+);
+
+const integrityStatusValidator = v.union(
+  v.literal("NOT_HASHED"),
+  v.literal("HASH_GENERATED"),
+  v.literal("INTEGRITY_VERIFIED"),
+  v.literal("HASH_MISMATCH"),
+);
 
 const schema = defineSchema(
   {
@@ -32,12 +51,180 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // add other tables here
+    // ---------------------------------------------------------------- JAAL ---
 
-    // tableName: defineTable({
-    //   ...
-    //   // table fields
-    // }).index("by_field", ["field"])
+    /** One investigation (case). `caseId` is the human-readable JAAL-XXX label. */
+    investigations: defineTable({
+      caseId: v.string(),
+      /** Identity subject of the owning user, or "demo" for simulation login. */
+      owner: v.string(),
+      title: v.string(),
+      category: v.string(),
+      description: v.string(),
+      notes: v.string(),
+      status: v.union(
+        v.literal("active"),
+        v.literal("completed"),
+        v.literal("archived"),
+      ),
+      source: v.union(
+        v.literal("simulation"),
+        v.literal("paste"),
+        v.literal("import"),
+      ),
+      detectionMode: v.union(
+        v.literal("simulation"),
+        v.literal("balanced"),
+        v.literal("manual"),
+      ),
+      flags: flagsValidator,
+      currentStage: v.string(),
+      createdAt: v.number(),
+      lastActivityAt: v.number(),
+      completedAt: v.optional(v.number()),
+      // Run state (simulation cursor + CaseRuntime status).
+      runStatus: runStatusValidator,
+      startedAt: v.number(),
+      endedAt: v.optional(v.number()),
+      cursor: v.number(),
+      turnCount: v.number(),
+      /** KillChainStage[] as structured JSON (content-derived). */
+      stages: v.any(),
+      schemaVersion: v.number(),
+    })
+      .index("by_owner", ["owner"])
+      .index("by_owner_case", ["owner", "caseId"]),
+
+    /** Conversation messages; original content is never altered. */
+    messages: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      messageNumber: v.number(),
+      sender: v.union(v.literal("scammer"), v.literal("decoy"), v.literal("system")),
+      content: v.string(),
+      source: v.string(),
+      timestamp: v.number(),
+      status: v.optional(v.string()),
+    }).index("by_investigation", ["investigationId"]),
+
+    /** Per-message tactic analysis results (structured JSON). */
+    analyses: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      messageId: v.string(),
+      intent: v.string(),
+      tactics: v.any(),
+      summary: v.string(),
+      reasoningSummary: v.string(),
+      engineMode: v.string(),
+      createdAt: v.number(),
+    }).index("by_investigation", ["investigationId"]),
+
+    /** Detected tactics (one row per tactic+message, deduplicated). */
+    tactics: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      tactic: v.string(),
+      messageId: v.optional(v.string()),
+      sourceText: v.string(),
+      timestamp: v.number(),
+      explanation: v.string(),
+    }).index("by_investigation", ["investigationId"]),
+
+    /** Extracted identifiers with SHA-256 integrity records. */
+    evidence: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      sourceMessageId: v.optional(v.string()),
+      sourceMessageText: v.string(),
+      label: v.string(),
+      evidenceType: v.string(),
+      extractedValue: v.string(),
+      normalizedValue: v.string(),
+      /** Deterministic snapshot that gets hashed. */
+      content: v.string(),
+      extractionMethod: v.string(),
+      extractionTimestamp: v.number(),
+      integrityHash: v.optional(v.string()),
+      integrityAlgorithm: v.optional(v.string()),
+      integrityStatus: integrityStatusValidator,
+      hashGeneratedAt: v.optional(v.number()),
+      notes: v.string(),
+      tampered: v.optional(v.boolean()),
+      createdAt: v.number(),
+    }).index("by_investigation", ["investigationId"]),
+
+    /** Investigation events powering the activity console. */
+    events: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      kind: v.string(),
+      title: v.string(),
+      detail: v.string(),
+      timestamp: v.number(),
+    }).index("by_investigation", ["investigationId"]),
+
+    /** Log lines (info/warn/success/error) for the console streams. */
+    logs: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      level: v.string(),
+      message: v.string(),
+      timestamp: v.number(),
+    }).index("by_investigation", ["investigationId"]),
+
+    /** AI investigation strategy suggestions (pending = shown to operator). */
+    strategies: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      objective: v.string(),
+      informationGap: v.string(),
+      suggestedQuestion: v.string(),
+      reason: v.string(),
+      relatedMessageIds: v.array(v.string()),
+      engineMode: v.string(),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("dismissed"),
+        v.literal("superseded"),
+        v.literal("exhausted"),
+      ),
+      createdAt: v.number(),
+    })
+      .index("by_investigation", ["investigationId"])
+      .index("by_investigation_status", ["investigationId", "status"]),
+
+    /** Generated evidence reports (full structured payload as JSON). */
+    reports: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      reportId: v.string(),
+      reportVersion: v.number(),
+      summary: v.any(),
+      reportData: v.any(),
+      generatedAt: v.number(),
+      reportStatus: v.string(),
+      simulated: v.boolean(),
+    })
+      .index("by_owner", ["owner"])
+      .index("by_investigation", ["investigationId"]),
+
+    /** Per-user settings (appearance / investigation / simulation). */
+    settings: defineTable({
+      owner: v.string(),
+      appearance: v.any(),
+      investigation: v.any(),
+      simulation: v.any(),
+      updatedAt: v.number(),
+    }).index("by_owner", ["owner"]),
   },
   {
     schemaValidation: false,

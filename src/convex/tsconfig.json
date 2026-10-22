@@ -12,6 +12,13 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
 
+    /* Path alias so Convex functions can reuse the shared engine services
+     * under src/services (same "@/*" mapping as the frontend app). */
+    "baseUrl": "../..",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
     /* These compiler options are required by Convex */
     "target": "ESNext",
     "lib": ["ES2021", "dom"],

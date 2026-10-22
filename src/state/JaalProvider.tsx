@@ -6,10 +6,13 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
+import { useAction, useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { clearDemoSession, setDemoSession } from "@/lib/demoSession";
-import { api, probeBackend, tryApi, type BackendStatus } from "@/services/api";
+import { api as httpApi, probeBackend, tryApi, type BackendStatus } from "@/services/api";
 import {
   generateEvidenceHash,
   verifyEvidenceIntegrity,
@@ -83,47 +86,148 @@ const JaalContext = createContext<JaalContextValue | null>(null);
 const REPLY_DELAY_MIN = 1100;
 const REPLY_DELAY_MAX = 2100;
 
+type RemoteState = {
+  investigations: Investigation[];
+  sessions: Record<string, JaalState["sessions"][string]>;
+  reports: EvidenceReport[];
+  settings: JaalState["settings"];
+};
+
+/**
+ * Application state provider.
+ *
+ * Primary source of truth: the Convex backend (`jaal.state` reactive query).
+ * Investigations, conversations, evidence, kill-chains, logs, events, reports
+ * and settings all come from the database via live subscription, and every
+ * command (send message, advance simulation, verify evidence, complete case,
+ * generate report…) runs server-side. The local simulation engine remains as
+ * an offline fallback when the backend has not connected yet, so the UI keeps
+ * working during initial load or without a deployment.
+ */
 export function JaalProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, null, loadState);
+  const [localState, dispatch] = useReducer(reducer, null, loadState);
+  const [typingMap, setTypingMap] = useState<Record<string, boolean>>({});
+
+  // ---- Backend (Convex) wiring ------------------------------------------
+  const remote = useQuery(api.jaal.state) as RemoteState | undefined;
+  const remoteReady = remote !== undefined;
+
+  const seedDemo = useMutation(api.jaal.seedDemo);
+  const createInvestigationMut = useMutation(api.jaal.createInvestigation);
+  const sendMessageMut = useMutation(api.jaal.sendMessage);
+  const simulationNextMut = useMutation(api.jaal.simulationNext);
+  const approveStrategyMut = useMutation(api.jaal.approveStrategy);
+  const ingestMessagesMut = useMutation(api.jaal.ingestMessages);
+  const setRunStatusMut = useMutation(api.jaal.setRunStatus);
+  const completeMut = useMutation(api.jaal.completeInvestigation);
+  const setStatusMut = useMutation(api.jaal.setInvestigationStatus);
+  const resetCaseMut = useMutation(api.jaal.resetCase);
+  const resetDemoMut = useMutation(api.jaal.resetDemo);
+  const clearLogsMut = useMutation(api.jaal.clearLogs);
+  const generateHashMut = useMutation(api.jaal.generateHash);
+  const verifyEvidenceMut = useMutation(api.jaal.verifyEvidence);
+  const setContentMut = useMutation(api.jaal.setEvidenceContent);
+  const setNotesMut = useMutation(api.jaal.setEvidenceNotes);
+  const generateReportMut = useMutation(api.jaal.generateReport);
+  const updateSettingsMut = useMutation(api.jaal.updateSettings);
+
+  // AI-augmented actions (LLM when configured, simulation fallback otherwise).
+  const sendMessageAI = useAction(api.actions.sendMessageWithAI);
+  const simulationNextAI = useAction(api.actions.simulationNextWithAI);
+  const approveStrategyAI = useAction(api.actions.approveStrategyWithAI);
+  const generateReportAI = useAction(api.actions.generateReportWithAI);
+
+  // ---- Effective state: Convex-authoritative with local merge ----------
+  const state = useMemo<JaalState>(() => {
+    if (!remote) return localState;
+    const invById = new Map(remote.investigations.map((i) => [i.id, i]));
+    // Optimistic local cases not yet acknowledged by the backend stay visible.
+    for (const li of localState.investigations) {
+      if (!invById.has(li.id)) invById.set(li.id, li);
+    }
+    const investigations = [...invById.values()].sort(
+      (a, b) => b.lastActivityAt - a.lastActivityAt,
+    );
+    const sessions: JaalState["sessions"] = { ...remote.sessions };
+    for (const [caseId, rt] of Object.entries(localState.sessions)) {
+      if (!sessions[caseId]) sessions[caseId] = rt;
+    }
+    for (const [caseId, typing] of Object.entries(typingMap)) {
+      if (typing && sessions[caseId]) {
+        sessions[caseId] = { ...sessions[caseId], typing: true };
+      }
+    }
+    const reports = [...remote.reports];
+    for (const r of localState.reports) {
+      if (!reports.some((x) => x.id === r.id)) reports.push(r);
+    }
+    return {
+      ...localState,
+      investigations,
+      sessions,
+      reports,
+      settings: remote.settings ?? localState.settings,
+    };
+  }, [localState, remote, typingMap]);
+
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
   const processedHashes = useRef<Set<string>>(new Set());
   const saveTimer = useRef<number | null>(null);
+  const seededForOwner = useRef(false);
 
   // Hydrate demo session + persisted state on first mount.
   useEffect(() => {
     dispatch({ type: "HYDRATE", state: loadState() });
   }, []);
 
-  // Backend probe (falls back to local simulation when unavailable).
+  // Backend probe (HTTP probe powers the legacy indicator; Convex presence
+  // counts as online for the workspace).
   useEffect(() => {
     let cancelled = false;
     probeBackend().then((status) => {
-      if (!cancelled) dispatch({ type: "SET_BACKEND_STATUS", status });
+      if (!cancelled && status === "online") {
+        dispatch({ type: "SET_BACKEND_STATUS", status });
+      }
     });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // Persist state (debounced).
   useEffect(() => {
-    if (!state.hydrated) return;
+    if (remoteReady && remote) {
+      dispatch({ type: "SET_BACKEND_STATUS", status: "online" });
+      // Seed the synthetic demo cases on first connect (idempotent).
+      if (!seededForOwner.current && remote.investigations.length === 0) {
+        seededForOwner.current = true;
+        void seedDemo({}).catch(() => {
+          seededForOwner.current = false;
+        });
+      }
+    }
+  }, [remoteReady, remote, seedDemo]);
+
+  // Persist local state (debounced) — used only as the offline fallback.
+  useEffect(() => {
+    if (!localState.hydrated || remote) return;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => saveState(state), 350);
+    saveTimer.current = window.setTimeout(() => saveState(localState), 350);
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
-  }, [state]);
+  }, [localState, remote]);
 
-  // Auto-generate SHA-256 hashes for evidence that has none yet.
+  // Auto-generate SHA-256 hashes for local-mode evidence without hashes.
+  // In backend mode the server hashes evidence at extraction time.
   useEffect(() => {
-    if (!state.settings.investigation.autoHash) return;
+    if (remote) return;
+    if (!localState.settings.investigation.autoHash) return;
     const pending: { caseId: string; evidenceId: string }[] = [];
-    for (const [caseId, rt] of Object.entries(state.sessions)) {
-      const inv = state.investigations.find((i) => i.id === caseId);
+    for (const [caseId, rt] of Object.entries(localState.sessions)) {
+      const inv = localState.investigations.find((i) => i.id === caseId);
       if (!inv?.flags.integrityHashing) continue;
       for (const e of rt.evidence) {
         if (!e.hash && !processedHashes.current.has(e.id)) {
@@ -145,7 +249,19 @@ export function JaalProvider({ children }: { children: ReactNode }) {
         /* Web Crypto unavailable */
       }
     });
-  }, [state.sessions, state.investigations, state.settings.investigation.autoHash]);
+  }, [
+    remote,
+    localState.sessions,
+    localState.investigations,
+    localState.settings.investigation.autoHash,
+  ]);
+
+  const setTyping = useCallback((caseId: string, typing: boolean) => {
+    setTypingMap((prev) => {
+      if (!!prev[caseId] === typing) return prev;
+      return { ...prev, [caseId]: typing };
+    });
+  }, []);
 
   const signInDemo = useCallback((name: string, email: string) => {
     const session = setDemoSession(name, email);
@@ -168,37 +284,297 @@ export function JaalProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "SET_BACKEND_STATUS", status });
   }, []);
 
-  const createCase = useCallback((input: CreateCaseInput): string => {
-    const now = Date.now();
-    const nextNumber =
-      stateRef.current.investigations.reduce((max, inv) => {
+  const createCase = useCallback(
+    (input: CreateCaseInput): string => {
+      const now = Date.now();
+      const nextNumber = stateRef.current.investigations.reduce((max, inv) => {
         const n = Number(inv.id.split("-")[1]);
         return Number.isFinite(n) && n > max ? n : max;
       }, 0) + 1;
-    const caseId = `JAAL-${String(nextNumber).padStart(3, "0")}`;
-    const investigation: Investigation = {
-      id: caseId,
-      title: input.title,
-      category: input.category,
-      description: input.description,
-      notes: input.notes,
-      status: "active",
-      createdAt: now,
-      lastActivityAt: now,
-      currentStage: "contact",
-      source: input.source,
-      detectionMode: input.detectionMode,
-      flags: input.flags,
-    };
+      const caseId = `JAAL-${String(nextNumber).padStart(3, "0")}`;
+      const investigation: Investigation = {
+        id: caseId,
+        title: input.title,
+        category: input.category,
+        description: input.description,
+        notes: input.notes,
+        status: "active",
+        createdAt: now,
+        lastActivityAt: now,
+        currentStage: "contact",
+        source: input.source,
+        detectionMode: input.detectionMode,
+        flags: input.flags,
+      };
 
-    // Paste / import sources seed the transcript directly.
-    let seedMessages: ConversationMessage[] = [];
-    let transcriptDraft: ReturnType<typeof transcriptEvidence> | null = null;
-    if (input.transcript && input.transcript.trim()) {
-      const rawLines = input.transcript.split(/\r?\n/).filter((l) => l.trim());
-      let stamp = 0;
+      // Parse transcript locally (for the synchronous count + optimistic UI),
+      // then persist through the backend pipeline.
+      let seedMessages: ConversationMessage[] = [];
+      let transcriptDraft: ReturnType<typeof transcriptEvidence> | null = null;
+      if (input.transcript?.trim()) {
+        const rawLines = input.transcript.split(/\r?\n/).filter((l) => l.trim());
+        let stamp = 0;
+        const parsed: ConversationMessage[] = [];
+        for (const line of rawLines) {
+          const m = line.match(
+            /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?([A-Za-z][A-Za-z ]{1,20}):\s*(.+)$/,
+          );
+          if (!m) continue;
+          const who = m[1]!.toLowerCase().trim();
+          const isDecoy = /^(me|you|decoy|self|operator|user|jaal)$/.test(who);
+          parsed.push({
+            id: uid("msg"),
+            caseId,
+            author: isDecoy ? "decoy" : "scammer",
+            text: m[2]!,
+            timestamp: now + stamp * 1500,
+            source: input.source === "paste" ? "OPERATOR" : "TRANSCRIPT-IMPORT",
+            status: isDecoy ? "DECOY-ACTIVE" : undefined,
+          });
+          stamp += 1;
+        }
+        seedMessages = parsed;
+        if (parsed.length > 0) transcriptDraft = transcriptEvidence(caseId, parsed);
+      }
+
+      dispatch({ type: "CREATE_CASE", investigation, seedMessages, transcriptDraft });
+
+      if (remote) {
+        void createInvestigationMut({
+          caseId,
+          title: input.title,
+          category: input.category,
+          description: input.description,
+          notes: input.notes,
+          source: input.source,
+          detectionMode: input.detectionMode,
+          flags: input.flags,
+          transcript: input.transcript,
+        }).catch(() => {
+          dispatch({
+            type: "NOTIFY",
+            notification: {
+              title: `Case ${caseId} not persisted`,
+              detail: "Backend unavailable — the case exists locally for this session only.",
+              caseId,
+              kind: "system",
+            },
+          });
+        });
+      }
+
+      return caseId;
+    },
+    [remote, createInvestigationMut],
+  );
+
+  const getCase = useCallback((caseId: string) => {
+    const investigation = stateRef.current.investigations.find((i) => i.id === caseId);
+    const runtime = stateRef.current.sessions[caseId];
+    if (!investigation || !runtime) return null;
+    return { investigation, runtime };
+  }, []);
+
+  const sendMessage = useCallback(
+    async (caseId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      // ---- Backend path (authoritative) ----
+      if (remote) {
+        setTyping(caseId, true);
+        const started = Date.now();
+        try {
+          await sendMessageAI({ caseId, text: trimmed });
+        } catch {
+          try {
+            await sendMessageMut({ caseId, text: trimmed });
+          } catch {
+            dispatch({
+              type: "NOTIFY",
+              notification: {
+                title: "Message not delivered",
+                detail: "Backend unavailable — check the connection and retry.",
+                caseId,
+                kind: "system",
+              },
+            });
+          }
+        } finally {
+          const elapsed = Date.now() - started;
+          if (elapsed < 600) {
+            window.setTimeout(() => setTyping(caseId, false), 600 - elapsed);
+          } else {
+            setTyping(caseId, false);
+          }
+        }
+        return;
+      }
+
+      // ---- Local fallback path ----
+      const snapshot = stateRef.current;
+      const rt = snapshot.sessions[caseId];
+      const inv = snapshot.investigations.find((i) => i.id === caseId);
+      if (!rt || !inv) return;
+      if (rt.status === "completed" || rt.status === "paused") return;
+
+      const now = Date.now();
+      const userMessage: ConversationMessage = {
+        id: uid("msg"),
+        caseId,
+        author: "decoy",
+        text: trimmed,
+        timestamp: now,
+        source: "OPERATOR",
+        status: "DECOY-ACTIVE",
+      };
+      dispatch({ type: "INGEST_MESSAGE", message: userMessage });
+
+      const remoteHttp = await tryApi(() =>
+        httpApi.sendMessage({ sessionId: caseId, author: "decoy", text: trimmed }),
+      );
+      if (remoteHttp) {
+        dispatch({ type: "INGEST_MESSAGE", message: { ...remoteHttp, caseId } });
+        return;
+      }
+
+      dispatch({ type: "TYPING", caseId, typing: true });
+      const delay =
+        REPLY_DELAY_MIN + Math.random() * (REPLY_DELAY_MAX - REPLY_DELAY_MIN);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      const current = stateRef.current.sessions[caseId];
+      if (!current || current.status !== "running") {
+        dispatch({ type: "TYPING", caseId, typing: false });
+        return;
+      }
+
+      const turn = nextScammerTurn(trimmed, current.cursor, current.turnCount);
+      if (turn.exhausted) {
+        dispatch({ type: "TYPING", caseId, typing: false });
+        dispatch({
+          type: "INGEST_MESSAGE",
+          message: {
+            id: uid("msg"),
+            caseId,
+            author: "system",
+            text: "Channel quiet — scripted simulation exhausted. Investigation marked complete.",
+            timestamp: Date.now(),
+            source: "SIM-ENGINE",
+          },
+        });
+        dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
+        return;
+      }
+
+      const reply: ConversationMessage = {
+        id: uid("msg"),
+        caseId,
+        author: "scammer",
+        text: turn.text,
+        timestamp: Date.now(),
+        source: turn.branch ? `SIM-ENGINE·${turn.branch.id}` : "SIM-ENGINE",
+      };
+      const nextCursor = turn.arc ? current.cursor + 1 : current.cursor;
+      const nextTurnCount = current.turnCount + 1;
+      if (arcExhausted(nextCursor) && !turn.branch) {
+        dispatch({
+          type: "INGEST_MESSAGE",
+          message: reply,
+          cursor: nextCursor,
+          turnCount: nextTurnCount,
+        });
+        dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
+        return;
+      }
+      dispatch({
+        type: "INGEST_MESSAGE",
+        message: reply,
+        cursor: nextCursor,
+        turnCount: nextTurnCount,
+      });
+    },
+    [remote, sendMessageAI, sendMessageMut, setTyping],
+  );
+
+  const advanceSimulation = useCallback(
+    async (caseId: string) => {
+      // ---- Backend path ----
+      if (remote) {
+        setTyping(caseId, true);
+        try {
+          await simulationNextAI({ caseId });
+        } catch {
+          try {
+            await simulationNextMut({ caseId });
+          } catch {
+            /* surfaced by state subscription gap */
+          }
+        } finally {
+          setTyping(caseId, false);
+        }
+        return;
+      }
+
+      // ---- Local fallback path ----
+      const current = stateRef.current.sessions[caseId];
+      if (!current || current.status !== "running") return;
+
+      if (arcExhausted(current.cursor)) {
+        dispatch({
+          type: "INGEST_MESSAGE",
+          message: {
+            id: uid("msg"),
+            caseId,
+            author: "system",
+            text: "Script exhausted — no further synthetic lines available.",
+            timestamp: Date.now(),
+            source: "SIM-ENGINE",
+          },
+        });
+        return;
+      }
+
+      dispatch({ type: "TYPING", caseId, typing: true });
+      await new Promise((r) => setTimeout(r, 700));
+      const rt = stateRef.current.sessions[caseId];
+      if (!rt || rt.status !== "running") {
+        dispatch({ type: "TYPING", caseId, typing: false });
+        return;
+      }
+      const turn = nextScammerTurn("", rt.cursor, rt.turnCount);
+      if (turn.exhausted) {
+        dispatch({ type: "TYPING", caseId, typing: false });
+        dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
+        return;
+      }
+      const nextCursor = turn.arc ? rt.cursor + 1 : rt.cursor;
+      dispatch({
+        type: "INGEST_MESSAGE",
+        message: {
+          id: uid("msg"),
+          caseId,
+          author: "scammer",
+          text: turn.text,
+          timestamp: Date.now(),
+          source: turn.branch ? `SIM-ENGINE·${turn.branch.id}` : "SIM-ENGINE",
+        },
+        cursor: nextCursor,
+        turnCount: rt.turnCount + 1,
+      });
+      if (arcExhausted(nextCursor) && !turn.branch) {
+        dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
+      }
+    },
+    [remote, simulationNextAI, simulationNextMut, setTyping],
+  );
+
+  const ingestTranscript = useCallback(
+    (caseId: string, raw: string): number => {
+      const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
       const parsed: ConversationMessage[] = [];
-      for (const line of rawLines) {
+      let offset = 0;
+      for (const line of lines) {
         const m = line.match(
           /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?([A-Za-z][A-Za-z ]{1,20}):\s*(.+)$/,
         );
@@ -210,257 +586,156 @@ export function JaalProvider({ children }: { children: ReactNode }) {
           caseId,
           author: isDecoy ? "decoy" : "scammer",
           text: m[2]!,
-          timestamp: now + stamp * 1500,
-          source: input.source === "paste" ? "OPERATOR" : "TRANSCRIPT-IMPORT",
-          status: isDecoy ? "DECOY-ACTIVE" : undefined,
-        });
-        stamp += 1;
-      }
-      seedMessages = parsed;
-      if (parsed.length > 0) transcriptDraft = transcriptEvidence(caseId, parsed);
-    }
-
-    dispatch({ type: "CREATE_CASE", investigation, seedMessages, transcriptDraft });
-
-    return caseId;
-  }, []);
-
-  const getCase = useCallback((caseId: string) => {
-    const investigation = stateRef.current.investigations.find((i) => i.id === caseId);
-    const runtime = stateRef.current.sessions[caseId];
-    if (!investigation || !runtime) return null;
-    return { investigation, runtime };
-  }, []);
-
-  const sendMessage = useCallback(async (caseId: string, text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const snapshot = stateRef.current;
-    const rt = snapshot.sessions[caseId];
-    const inv = snapshot.investigations.find((i) => i.id === caseId);
-    if (!rt || !inv) return;
-    if (rt.status === "completed" || rt.status === "paused") return;
-
-    const now = Date.now();
-    const userMessage: ConversationMessage = {
-      id: uid("msg"),
-      caseId,
-      author: "decoy",
-      text: trimmed,
-      timestamp: now,
-      source: "OPERATOR",
-      status: "DECOY-ACTIVE",
-    };
-    dispatch({ type: "INGEST_MESSAGE", message: userMessage });
-
-    // Backend conversation endpoint when available, otherwise local engine.
-    const remote = await tryApi(() =>
-      api.sendMessage({ sessionId: caseId, author: "decoy", text: trimmed }),
-    );
-    if (remote) {
-      dispatch({ type: "INGEST_MESSAGE", message: { ...remote, caseId } });
-      return;
-    }
-
-    dispatch({ type: "TYPING", caseId, typing: true });
-    const delay =
-      REPLY_DELAY_MIN + Math.random() * (REPLY_DELAY_MAX - REPLY_DELAY_MIN);
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    const current = stateRef.current.sessions[caseId];
-    if (!current || current.status !== "running") {
-      dispatch({ type: "TYPING", caseId, typing: false });
-      return;
-    }
-
-    const turn = nextScammerTurn(trimmed, current.cursor, current.turnCount);
-    if (turn.exhausted) {
-      dispatch({ type: "TYPING", caseId, typing: false });
-      dispatch({
-        type: "INGEST_MESSAGE",
-        message: {
-          id: uid("msg"),
-          caseId,
-          author: "system",
-          text: "Channel quiet — scripted simulation exhausted. Investigation marked complete.",
-          timestamp: Date.now(),
-          source: "SIM-ENGINE",
-        },
-      });
-      dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
-      return;
-    }
-
-    const reply: ConversationMessage = {
-      id: uid("msg"),
-      caseId,
-      author: "scammer",
-      text: turn.text,
-      timestamp: Date.now(),
-      source: turn.branch ? `SIM-ENGINE·${turn.branch.id}` : "SIM-ENGINE",
-    };
-    const nextCursor = turn.arc ? current.cursor + 1 : current.cursor;
-    const nextTurnCount = current.turnCount + 1;
-    if (arcExhausted(nextCursor) && !turn.branch) {
-      // Last arc line: mark completion right after it lands.
-      dispatch({
-        type: "INGEST_MESSAGE",
-        message: reply,
-        cursor: nextCursor,
-        turnCount: nextTurnCount,
-      });
-      dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
-      return;
-    }
-    dispatch({
-      type: "INGEST_MESSAGE",
-      message: reply,
-      cursor: nextCursor,
-      turnCount: nextTurnCount,
-    });
-  }, []);
-
-  const advanceSimulation = useCallback(async (caseId: string) => {
-    const current = stateRef.current.sessions[caseId];
-    if (!current || current.status !== "running") return;
-
-    if (arcExhausted(current.cursor)) {
-      dispatch({
-        type: "INGEST_MESSAGE",
-        message: {
-          id: uid("msg"),
-          caseId,
-          author: "system",
-          text: "Script exhausted — no further synthetic lines available.",
-          timestamp: Date.now(),
-          source: "SIM-ENGINE",
-        },
-      });
-      return;
-    }
-
-    dispatch({ type: "TYPING", caseId, typing: true });
-    await new Promise((r) => setTimeout(r, 700));
-    const rt = stateRef.current.sessions[caseId];
-    if (!rt || rt.status !== "running") {
-      dispatch({ type: "TYPING", caseId, typing: false });
-      return;
-    }
-    const turn = nextScammerTurn("", rt.cursor, rt.turnCount);
-    if (turn.exhausted) {
-      dispatch({ type: "TYPING", caseId, typing: false });
-      dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
-      return;
-    }
-    const nextCursor = turn.arc ? rt.cursor + 1 : rt.cursor;
-    dispatch({
-      type: "INGEST_MESSAGE",
-      message: {
-        id: uid("msg"),
-        caseId,
-        author: "scammer",
-        text: turn.text,
-        timestamp: Date.now(),
-        source: turn.branch ? `SIM-ENGINE·${turn.branch.id}` : "SIM-ENGINE",
-      },
-      cursor: nextCursor,
-      turnCount: rt.turnCount + 1,
-    });
-    if (arcExhausted(nextCursor) && !turn.branch) {
-      dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
-    }
-  }, []);
-
-  const ingestTranscript = useCallback((caseId: string, raw: string): number => {
-    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    let count = 0;
-    let offset = 0;
-    for (const line of lines) {
-      const m = line.match(
-        /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?([A-Za-z][A-Za-z ]{1,20}):\s*(.+)$/,
-      );
-      if (!m) continue;
-      const who = m[1]!.toLowerCase().trim();
-      const isDecoy = /^(me|you|decoy|self|operator|user|jaal)$/.test(who);
-      dispatch({
-        type: "INGEST_MESSAGE",
-        message: {
-          id: uid("msg"),
-          caseId,
-          author: isDecoy ? "decoy" : "scammer",
-          text: m[2]!,
           timestamp: Date.now() + offset,
           source: "TRANSCRIPT-IMPORT",
           status: isDecoy ? "DECOY-ACTIVE" : undefined,
-        },
+        });
+        offset += 400;
+      }
+      parsed.forEach((message) =>
+        dispatch({ type: "INGEST_MESSAGE", message }),
+      );
+      if (remote && parsed.length > 0) {
+        void ingestMessagesMut({
+          caseId,
+          messages: parsed.map((m) => ({
+            sender: m.author === "decoy" ? ("decoy" as const) : ("scammer" as const),
+            content: m.text,
+            source: m.source,
+            timestamp: m.timestamp,
+          })),
+        }).catch(() => undefined);
+      }
+      return parsed.length;
+    },
+    [remote, ingestMessagesMut],
+  );
+
+  const togglePause = useCallback(
+    (caseId: string) => {
+      const rt = stateRef.current.sessions[caseId];
+      if (!rt || rt.status === "completed") return;
+      if (remote) {
+        void setRunStatusMut({
+          caseId,
+          action: rt.status === "running" ? "pause" : "resume",
+        }).catch(() => undefined);
+        return;
+      }
+      dispatch({
+        type: "SET_CASE_STATUS",
+        caseId,
+        status: rt.status === "running" ? "paused" : "running",
       });
-      offset += 400;
-      count += 1;
-    }
-    return count;
-  }, []);
+    },
+    [remote, setRunStatusMut],
+  );
 
-  const togglePause = useCallback((caseId: string) => {
-    const rt = stateRef.current.sessions[caseId];
-    if (!rt || rt.status === "completed") return;
-    dispatch({
-      type: "SET_CASE_STATUS",
-      caseId,
-      status: rt.status === "running" ? "paused" : "running",
-    });
-  }, []);
+  const endInvestigation = useCallback(
+    (caseId: string) => {
+      if (remote) {
+        // Server completes the case and auto-generates the final report.
+        void completeMut({ caseId }).catch(() => undefined);
+        return;
+      }
+      dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
+    },
+    [remote, completeMut],
+  );
 
-  const endInvestigation = useCallback((caseId: string) => {
-    dispatch({ type: "SET_CASE_STATUS", caseId, status: "completed" });
-  }, []);
-
-  const resetCase = useCallback((caseId: string) => {
-    processedHashes.current.clear();
-    dispatch({ type: "RESET_CASE", caseId });
-  }, []);
+  const resetCase = useCallback(
+    (caseId: string) => {
+      processedHashes.current.clear();
+      if (remote) {
+        void resetCaseMut({ caseId }).catch(() => undefined);
+        return;
+      }
+      dispatch({ type: "RESET_CASE", caseId });
+    },
+    [remote, resetCaseMut],
+  );
 
   const resetDemoData = useCallback(() => {
     processedHashes.current.clear();
     clearPersistedState();
     dispatch({ type: "RESET_DEMO" });
-  }, []);
+    if (remote) {
+      void resetDemoMut({}).catch(() => undefined);
+    }
+  }, [remote, resetDemoMut]);
 
-  const clearLogs = useCallback((caseId: string) => {
-    dispatch({ type: "CLEAR_LOGS", caseId });
-  }, []);
+  const clearLogs = useCallback(
+    (caseId: string) => {
+      if (remote) {
+        void clearLogsMut({ caseId }).catch(() => undefined);
+        return;
+      }
+      dispatch({ type: "CLEAR_LOGS", caseId });
+    },
+    [remote, clearLogsMut],
+  );
 
   const setCaseStatus = useCallback(
     (caseId: string, status: Investigation["status"]) => {
+      if (remote) {
+        void setStatusMut({ caseId, status }).catch(() => undefined);
+        return;
+      }
       dispatch({ type: "SET_CASE_FILTER_STATUS", caseId, status });
     },
-    [],
+    [remote, setStatusMut],
   );
 
-  const generateHash = useCallback(async (caseId: string, evidenceId: string) => {
-    const item = stateRef.current.sessions[caseId]?.evidence.find((e) => e.id === evidenceId);
-    if (!item) return;
-    try {
-      const { hash, at } = await generateEvidenceHash(item);
-      dispatch({ type: "HASH_SET", caseId, evidenceId, hash, at });
-    } catch {
-      dispatch({
-        type: "NOTIFY",
-        notification: {
-          title: "Hashing unavailable",
-          detail: "Web Crypto API requires a secure context.",
-          caseId,
-          kind: "system",
-        },
-      });
-    }
-  }, []);
+  const generateHash = useCallback(
+    async (caseId: string, evidenceId: string) => {
+      if (remote) {
+        try {
+          await generateHashMut({ evidenceId: evidenceId as never });
+        } catch {
+          dispatch({
+            type: "NOTIFY",
+            notification: {
+              title: "Hashing unavailable",
+              detail: "Backend hashing failed for this evidence item.",
+              caseId,
+              kind: "system",
+            },
+          });
+        }
+        return;
+      }
+      const item = stateRef.current.sessions[caseId]?.evidence.find((e) => e.id === evidenceId);
+      if (!item) return;
+      try {
+        const { hash, at } = await generateEvidenceHash(item);
+        dispatch({ type: "HASH_SET", caseId, evidenceId, hash, at });
+      } catch {
+        dispatch({
+          type: "NOTIFY",
+          notification: {
+            title: "Hashing unavailable",
+            detail: "Web Crypto API requires a secure context.",
+            caseId,
+            kind: "system",
+          },
+        });
+      }
+    },
+    [remote, generateHashMut],
+  );
 
   const verifyEvidence = useCallback(
     async (caseId: string, evidenceId: string): Promise<"match" | "mismatch" | "error"> => {
+      if (remote) {
+        try {
+          return await verifyEvidenceMut({ evidenceId: evidenceId as never });
+        } catch {
+          return "error";
+        }
+      }
       const item = stateRef.current.sessions[caseId]?.evidence.find((e) => e.id === evidenceId);
       if (!item) return "error";
       if (!item.hash) {
-        // No recorded hash yet — generate first, then report generated state.
         await generateHash(caseId, evidenceId);
         return "error";
       }
@@ -473,49 +748,88 @@ export function JaalProvider({ children }: { children: ReactNode }) {
           match: result.match,
           at: Date.now(),
         });
-        // Also inform the backend when it is reachable.
         void tryApi(() =>
-          api.verifyEvidence(caseId, { evidenceId, content: item.content }),
+          httpApi.verifyEvidence(caseId, { evidenceId, content: item.content }),
         );
         return result.match ? "match" : "mismatch";
       } catch {
         return "error";
       }
     },
-    [generateHash],
+    [remote, verifyEvidenceMut, generateHash],
   );
 
   const setEvidenceContent = useCallback(
     (caseId: string, evidenceId: string, content: string) => {
+      if (remote) {
+        void setContentMut({ evidenceId: evidenceId as never, content }).catch(
+          () => undefined,
+        );
+        return;
+      }
       dispatch({ type: "SET_EVIDENCE_CONTENT", caseId, evidenceId, content });
     },
-    [],
+    [remote, setContentMut],
   );
 
   const setEvidenceNotes = useCallback(
     (caseId: string, evidenceId: string, notes: string) => {
+      if (remote) {
+        void setNotesMut({ evidenceId: evidenceId as never, notes }).catch(
+          () => undefined,
+        );
+        return;
+      }
       dispatch({ type: "SET_EVIDENCE_NOTES", caseId, evidenceId, notes });
     },
-    [],
+    [remote, setNotesMut],
   );
 
-  const createReport = useCallback((caseId: string): EvidenceReport | null => {
-    const snapshot = stateRef.current;
-    const inv = snapshot.investigations.find((i) => i.id === caseId);
-    const rt = snapshot.sessions[caseId];
-    if (!inv || !rt) return null;
-    const report = buildReport(
-      inv,
-      rt,
-      snapshot.user?.name ?? "Simulation operator",
-    );
-    dispatch({ type: "REPORT_CREATED", report });
-    return report;
-  }, []);
+  const createReport = useCallback(
+    (caseId: string): EvidenceReport | null => {
+      const snapshot = stateRef.current;
+      const inv = snapshot.investigations.find((i) => i.id === caseId);
+      const rt = snapshot.sessions[caseId];
+      if (!inv || !rt) return null;
+      const report = buildReport(
+        inv,
+        rt,
+        snapshot.user?.name ?? "Simulation operator",
+      );
+      dispatch({ type: "REPORT_CREATED", report });
+      if (remote) {
+        // Backend rebuilds the report server-side from stored data with the
+        // same id/timestamp so the UI and database agree.
+        void generateReportAI({
+          caseId,
+          reportId: report.id,
+          generatedAt: report.generatedAt,
+        }).catch(() => {
+          void generateReportMut({
+            caseId,
+            reportId: report.id,
+            generatedAt: report.generatedAt,
+          }).catch(() => undefined);
+        });
+      }
+      return report;
+    },
+    [remote, generateReportAI, generateReportMut],
+  );
 
-  const updateSettings = useCallback((patch: SettingsPatch) => {
-    dispatch({ type: "UPDATE_SETTINGS", patch });
-  }, []);
+  const updateSettings = useCallback(
+    (patch: SettingsPatch) => {
+      dispatch({ type: "UPDATE_SETTINGS", patch });
+      if (remote) {
+        void updateSettingsMut({
+          appearance: patch.appearance,
+          investigation: patch.investigation,
+          simulation: patch.simulation,
+        }).catch(() => undefined);
+      }
+    },
+    [remote, updateSettingsMut],
+  );
 
   const notify = useCallback((n: Omit<AppNotification, "id" | "read" | "timestamp">) => {
     dispatch({ type: "NOTIFY", notification: n });
@@ -527,6 +841,13 @@ export function JaalProvider({ children }: { children: ReactNode }) {
 
   const clearNotifications = useCallback(() => {
     dispatch({ type: "CLEAR_NOTIFS" });
+  }, []);
+
+  // Strategy approval path used by the workspace: when the operator approves
+  // the AI suggested next move, the backend marks the pending strategy
+  // approved and runs the full pipeline for the sent message.
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__jaalApproveStrategy = null;
   }, []);
 
   const value = useMemo<JaalContextValue>(
