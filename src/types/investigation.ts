@@ -137,4 +137,14 @@ export interface CaseRuntime {
   typing: boolean;
   /** True once the scripted simulation has nothing left to say */
   exhausted: boolean;
+  /** Latest backend strategy suggestion (Claude when configured, else rules). */
+  strategy?: {
+    objective: string;
+    missing: string;
+    question: string;
+    reason: string;
+    /** ANTHROPIC when an LLM produced it, SIMULATION for rule-based fallback */
+    source: string;
+    approved: boolean;
+  } | null;
 }

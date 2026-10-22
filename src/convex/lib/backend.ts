@@ -547,7 +547,7 @@ export async function buildRuntime(
   db: DatabaseReader | DatabaseWriter,
   inv: Doc<"investigations">,
 ): Promise<CaseRuntime> {
-  const [messages, evidence, tactics, events, logs] = await Promise.all([
+  const [messages, evidence, tactics, events, logs, strategies] = await Promise.all([
     db
       .query("messages")
       .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
@@ -568,7 +568,21 @@ export async function buildRuntime(
       .query("logs")
       .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
       .collect(),
+    db
+      .query("strategies")
+      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+      .collect(),
   ]);
+
+  // Latest usable strategy suggestion: a pending one wins, otherwise the most
+  // recent approved/exhausted one (Claude-authored when configured).
+  const usable = strategies.filter(
+    (s) => s.status === "pending" || s.status === "approved" || s.status === "exhausted",
+  );
+  const latestStrategy =
+    usable.find((s) => s.status === "pending") ??
+    [...usable].sort((a, b) => b.createdAt - a.createdAt)[0] ??
+    null;
 
   const sortedMessages = [...messages].sort((a, b) => a.timestamp - b.timestamp);
   return {
@@ -600,6 +614,16 @@ export async function buildRuntime(
     endedAt: inv.endedAt ?? null,
     typing: false,
     exhausted: inv.runStatus === "completed",
+    strategy: latestStrategy
+      ? {
+          objective: latestStrategy.objective,
+          missing: latestStrategy.informationGap,
+          question: latestStrategy.suggestedQuestion,
+          reason: latestStrategy.reason,
+          source: latestStrategy.engineMode,
+          approved: latestStrategy.status === "approved",
+        }
+      : null,
   };
 }
 

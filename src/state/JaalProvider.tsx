@@ -116,7 +116,6 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   const createInvestigationMut = useMutation(api.jaal.createInvestigation);
   const sendMessageMut = useMutation(api.jaal.sendMessage);
   const simulationNextMut = useMutation(api.jaal.simulationNext);
-  const approveStrategyMut = useMutation(api.jaal.approveStrategy);
   const ingestMessagesMut = useMutation(api.jaal.ingestMessages);
   const setRunStatusMut = useMutation(api.jaal.setRunStatus);
   const completeMut = useMutation(api.jaal.completeInvestigation);
@@ -134,7 +133,6 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   // AI-augmented actions (LLM when configured, simulation fallback otherwise).
   const sendMessageAI = useAction(api.actions.sendMessageWithAI);
   const simulationNextAI = useAction(api.actions.simulationNextWithAI);
-  const approveStrategyAI = useAction(api.actions.approveStrategyWithAI);
   const generateReportAI = useAction(api.actions.generateReportWithAI);
 
   // ---- Effective state: Convex-authoritative with local merge ----------
@@ -841,13 +839,6 @@ export function JaalProvider({ children }: { children: ReactNode }) {
 
   const clearNotifications = useCallback(() => {
     dispatch({ type: "CLEAR_NOTIFS" });
-  }, []);
-
-  // Strategy approval path used by the workspace: when the operator approves
-  // the AI suggested next move, the backend marks the pending strategy
-  // approved and runs the full pipeline for the sent message.
-  useEffect(() => {
-    (window as unknown as Record<string, unknown>).__jaalApproveStrategy = null;
   }, []);
 
   const value = useMemo<JaalContextValue>(

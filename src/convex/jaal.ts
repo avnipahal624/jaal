@@ -38,6 +38,7 @@ import {
 import { createStages } from "@/services/investigationService";
 import { buildReport } from "@/services/reportService";
 import { buildSeedCases } from "@/data/demoInvestigations";
+import { OPENING_TURN } from "@/data/demoConversation";
 import { sha256Hex } from "@/utils/hash";
 import type { KillChainStage } from "@/types/investigation";
 import type { EvidenceReport } from "@/types/report";
@@ -298,7 +299,6 @@ async function seedOpening(
 ): Promise<void> {
   if (inv.source !== "simulation") return;
   const now = Date.now();
-  const { OPENING_TURN } = await import("@/data/demoConversation");
   const msgId = await db.insert("messages", {
     investigationId: inv._id,
     owner: inv.owner,

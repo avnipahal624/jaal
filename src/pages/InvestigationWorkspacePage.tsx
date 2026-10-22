@@ -60,7 +60,9 @@ function AnalysisColumn({
         bodyClassName="overflow-y-auto"
         right={
           <span className="whitespace-nowrap font-mono text-[8px] uppercase tracking-widest text-jmuted/80">
-            Simulation mode — analysis engine
+            {runtime.strategy?.source === "ANTHROPIC"
+              ? "Convex action — Anthropic Claude"
+              : "Simulation mode — analysis engine"}
           </span>
         }
       >

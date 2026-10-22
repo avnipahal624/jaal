@@ -1,5 +1,7 @@
 ## Overview
 
+JAAL Investigator is a **scam-analysis training simulation**. Every case, message, identifier and timestamp in the app is synthetic; no real scammers or third parties are ever contacted.
+
 This project uses the following tech stack:
 - Vite
 - Typescript
@@ -236,6 +238,40 @@ Remember to import { toast } from "sonner". Usage: `toast("Event has been create
 Always ensure your larger dialogs have a scroll in its content to ensure that its content fits the screen size. Make sure that the content is not cut off from the screen.
 
 Ideally, instead of using a new page, use a Dialog instead. 
+
+# JAAL Backend (Convex)
+
+The investigation workflow runs on the managed Convex deployment — there is no separate API server. All case data lives in Convex tables and the React UI subscribes to it in real time.
+
+## Architecture
+
+- `src/convex/schema.ts` — tables: `investigations`, `sessions`, `messages`, `evidence`, `tactics`, `events`, `logs`, `strategies`, `reports`, `settings`, `users`.
+- `src/convex/jaal.ts` — public queries/mutations: `state` (reactive workspace snapshot), `createInvestigation`, `sendMessage`, `simulationNext`, `ingestMessages`, `generateHash`, `verifyEvidence`, `setEvidenceContent` / `setEvidenceNotes`, `setRunStatus`, `completeInvestigation`, `resetCase`, `generateReport`, `seedDemo`, `updateSettings`, and more.
+- `src/convex/lib/backend.ts` — the shared pipeline: tactic detection, kill-chain progression, identifier extraction (UPI/VPA, phone, payment amount, link, IP, email), server-side SHA-256 hashing, activity events and log entries. Original message content is never mutated.
+- `src/convex/ai.ts` — Anthropic Claude calls (`"use node"` action) for investigation strategy and report summaries.
+- `src/convex/actions.ts` — action wrappers (`sendMessageWithAI`, `simulationNextWithAI`, `generateReportWithAI`, `approveStrategyWithAI`) that try the LLM first and fall back to the deterministic simulation engine, labelled `SIMULATION` in logs and in the UI.
+- `src/state/JaalProvider.tsx` — hydrates the frontend from `api.jaal.state` via `useQuery` and routes every command through mutations/actions. A local reducer remains only as an offline fallback.
+
+## Full verified workflow
+
+create → message (operator or simulated) → analysis (tactics + intent + strategy) → evidence extraction → SHA-256 hash → integrity verify (match / tamper / mismatch) → kill-chain progression → complete → report generation. Evidence integrity is verifiable from the client SHA-256 as well as the server hash.
+
+## Engine modes
+
+- **ANTHROPIC** — set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`, default `claude-sonnet-4-5`) on the Convex deployment: `npx convex env set ANTHROPIC_API_KEY sk-ant-...`. Strategy and report actions then call Claude; the workspace labels the engine "Convex action — Anthropic Claude".
+- **SIMULATION** (default, no key required) — every action falls back to the deterministic rules engine and the UI is clearly labelled "Simulation mode — analysis engine".
+
+Convex-side keys are never exposed to the browser bundle.
+
+## Verifying the backend from the CLI
+
+```bash
+npx convex run jaal:seedDemo '{}'
+npx convex run jaal:createInvestigation '{caseId:"JAAL-100",title:"Test",category:"Digital arrest scam",description:"d",notes:"n",source:"simulation",detectionMode:"simulation",flags:{tacticDetection:true,identifierExtraction:true,integrityHashing:true,aiSuggestions:true}}'
+npx convex run actions:sendMessageWithAI '{caseId:"JAAL-100",text:"Which department is issuing this notice?"}'
+npx convex run jaal:state '{}'
+npx convex run jaal:resetDemo '{}'   # restore the clean demo cases
+```
 
 # Using the Convex backend
 
