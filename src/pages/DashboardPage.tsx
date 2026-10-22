@@ -26,6 +26,7 @@ const FEED_KINDS = new Set([
   "stage_advanced",
   "report_created",
   "integrity_verified",
+  "integrity_mismatch",
 ]);
 
 export default function DashboardPage() {

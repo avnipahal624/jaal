@@ -7,6 +7,7 @@ import {
   Flag,
   FileSignature,
   Radio,
+  ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
 
@@ -19,6 +20,7 @@ const KIND_ICON: Record<ActivityKind, typeof Radio> = {
   stage_advanced: Flag,
   report_created: FileSignature,
   integrity_verified: ShieldCheck,
+  integrity_mismatch: ShieldAlert,
 };
 
 const KIND_COLOR: Record<ActivityKind, string> = {
@@ -30,6 +32,7 @@ const KIND_COLOR: Record<ActivityKind, string> = {
   stage_advanced: "text-jamber border-jamber/40",
   report_created: "text-jteal border-jteal/40",
   integrity_verified: "text-jgreen border-jgreen/40",
+  integrity_mismatch: "text-jred border-jred/40",
 };
 
 export interface FeedEntry {

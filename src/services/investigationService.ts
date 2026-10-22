@@ -341,8 +341,19 @@ export function analyzeMessage(
     if (stageHit) {
       const before = stages.find((s) => s.id === stageHit.stage);
       const tacticIds = newTactics.map((t) => t.tactic);
+      let working = stages;
+      // The first inbound message of a session also evidences initial contact,
+      // even when its content already matches a stronger stage.
+      if (working.every((s) => s.status === "pending")) {
+        working = advanceStage(
+          working,
+          { stage: "contact", reason: STAGE_PATTERNS.contact.reason },
+          message,
+          tacticIds,
+        );
+      }
       nextStages = normalizeStages(
-        advanceStage(stages, stageHit, message, tacticIds),
+        advanceStage(working, stageHit, message, tacticIds),
       );
       if (!before || before.status === "pending") {
         addLog(

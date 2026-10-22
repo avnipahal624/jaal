@@ -987,6 +987,26 @@ export const resetCase = mutation({
   },
 });
 
+/**
+ * Permanently delete one owned case and everything attached to it
+ * (messages, tactics, evidence, events, logs, strategies, reports).
+ * Owner-scoped — used to clean up operator test runs.
+ */
+export const deleteInvestigation = mutation({
+  args: { caseId: v.string() },
+  handler: async (ctx, { caseId }) => {
+    const inv = await requireInvestigation(ctx, caseId);
+    await wipeCase(ctx.db, inv);
+    const reportDocs = await ctx.db
+      .query("reports")
+      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+      .collect();
+    for (const r of reportDocs) await ctx.db.delete(r._id);
+    await ctx.db.delete(inv._id);
+    return { deleted: caseId };
+  },
+});
+
 export const clearLogs = mutation({
   args: { caseId: v.string() },
   handler: async (ctx, { caseId }) => {
@@ -1085,6 +1105,14 @@ export const verifyEvidence = mutation({
         );
         await pushLog(ctx.db, inv, "success", `Integrity verified · ${doc.label}`, at);
       } else {
+        await pushEvent(
+          ctx.db,
+          inv,
+          "integrity_mismatch",
+          "Integrity mismatch",
+          `${doc.label}: content no longer matches the recorded hash`,
+          at,
+        );
         await pushLog(
           ctx.db,
           inv,

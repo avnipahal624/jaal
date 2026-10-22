@@ -17,6 +17,7 @@ import {
   EyeOff,
   Filter,
   Radio,
+  ShieldAlert,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -42,6 +43,7 @@ const ACTIVITY_ICON: Record<ActivityKind, LucideIcon> = {
   stage_advanced: Activity,
   report_created: Check,
   integrity_verified: Check,
+  integrity_mismatch: ShieldAlert,
 };
 
 const ACTIVITY_COLOR: Record<ActivityKind, string> = {
@@ -53,6 +55,7 @@ const ACTIVITY_COLOR: Record<ActivityKind, string> = {
   stage_advanced: "text-jamber",
   report_created: "text-jteal",
   integrity_verified: "text-jgreen",
+  integrity_mismatch: "text-jred",
 };
 
 /** Split log lines into analysis vs system streams. */

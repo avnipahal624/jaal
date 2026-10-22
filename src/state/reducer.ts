@@ -742,18 +742,18 @@ export function reducer(state: JaalState, action: Action): JaalState {
                   action.at,
                 ),
           ]),
-          activities: action.match
-            ? capActivities([
-                ...rt.activities,
-                activity(
-                  action.caseId,
-                  "integrity_verified",
-                  "Integrity verified",
-                  `${item.label}: content matches recorded hash`,
-                  action.at,
-                ),
-              ])
-            : rt.activities,
+          activities: capActivities([
+            ...rt.activities,
+            activity(
+              action.caseId,
+              action.match ? "integrity_verified" : "integrity_mismatch",
+              action.match ? "Integrity verified" : "Integrity mismatch",
+              action.match
+                ? `${item.label}: content matches recorded hash`
+                : `${item.label}: content no longer matches the recorded hash`,
+              action.at,
+            ),
+          ]),
         })),
         notifications: action.match
           ? state.notifications
