@@ -40,7 +40,7 @@ import { buildReport } from "@/services/reportService";
 import { buildSeedCases } from "@/data/demoInvestigations";
 import { OPENING_TURN } from "@/data/demoConversation";
 import { sha256Hex } from "@/utils/hash";
-import type { KillChainStage } from "@/types/investigation";
+import type { CaseRuntime, KillChainStage } from "@/types/investigation";
 import type { EvidenceReport } from "@/types/report";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +65,29 @@ async function requireInvestigation(
     .unique();
   if (!doc) throw new Error(`Investigation ${caseId} not found`);
   return doc;
+}
+
+// ---------------------------------------------------------------------------
+// Rate limiting — lightweight per-case guard on operator/simulation traffic.
+// (The Convex deployment additionally provides platform-level rate limiting.)
+const RATE_WINDOW_MS = 30_000;
+const RATE_MAX_MESSAGES = 10;
+
+async function enforceMessageRateLimit(
+  db: MutationCtx["db"],
+  inv: Doc<"investigations">,
+): Promise<void> {
+  const recent = await db
+    .query("messages")
+    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+    .collect();
+  const cutoff = Date.now() - RATE_WINDOW_MS;
+  const count = recent.filter((m) => m.timestamp >= cutoff).length;
+  if (count >= RATE_MAX_MESSAGES) {
+    throw new Error(
+      "Rate limit exceeded — wait a moment before sending more messages in this case.",
+    );
+  }
 }
 
 async function countMessages(
@@ -108,7 +131,7 @@ export const state = query({
       .map(docToInvestigation)
       .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
 
-    const sessions: Record<string, unknown> = {};
+    const sessions: Record<string, CaseRuntime> = {};
     for (const inv of invDocs) {
       sessions[inv.caseId] = await buildRuntime(ctx.db, inv);
     }
@@ -644,6 +667,7 @@ async function sendDecoyAndReply(
   if (inv.runStatus !== "running") {
     return { reply: null, completed: inv.runStatus === "completed", exhausted: true };
   }
+  await enforceMessageRateLimit(ctx.db, inv);
 
   await ingestMessageDoc(ctx, inv, {
     sender: "decoy",
@@ -795,6 +819,7 @@ export const simulationNext = mutation({
     if (inv.runStatus !== "running") {
       return { reply: null, completed: inv.runStatus === "completed", exhausted: true };
     }
+    await enforceMessageRateLimit(ctx.db, inv);
     const fresh = (await ctx.db.get(inv._id))!;
     if (arcExhausted(fresh.cursor)) {
       await ingestMessageDoc(ctx, fresh, {

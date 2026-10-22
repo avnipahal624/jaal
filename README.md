@@ -263,6 +263,75 @@ create → message (operator or simulated) → analysis (tactics + intent + stra
 
 Convex-side keys are never exposed to the browser bundle.
 
+## API reference (frontend service contract)
+
+The React app calls these through `src/state/JaalProvider.tsx`; they are the
+equivalent of the REST surface (REST-style paths in parentheses).
+
+**Queries**
+
+| Function | Purpose |
+| --- | --- |
+| `jaal.state` (`GET /api/state`) | Full owner-scoped workspace: investigations, sessions (messages, evidence, tactics, stages, logs, events, strategy), reports, settings. Reactive — this is the real-time channel. |
+| `jaal.dashboard` (`GET /api/dashboard`) | Counts + recent activity computed from the database. |
+| `jaal.investigationMeta` (`GET /api/investigations/:id`) | Tactics + detected-stage labels for report generation. |
+| `jaal.pendingStrategy` (`GET /api/investigations/:id/strategy`) | Current pending strategy suggestion. |
+| `jaal.getReport` / `jaal.reports` (`GET /api/reports[/:id]`) | Generated reports. |
+| `jaal.getEvidence` (`GET /api/evidence/:id`) | Evidence + original source message. |
+| `jaal.getSettings` (`GET /api/settings`) | Owner settings. |
+
+**Mutations**
+
+| Function | Purpose |
+| --- | --- |
+| `jaal.createInvestigation` (`POST /api/investigations`) | Create case, seed opening line, run pipeline, build strategy. |
+| `jaal.sendMessage` (`POST /api/investigations/:id/messages`) | Save decoy message, generate contextual scammer reply, run full pipeline. Rate-limited per case. |
+| `jaal.simulationNext` (`POST /api/investigations/:id/simulation/next`) | Advance the scripted arc. |
+| `jaal.ingestMessages` | Bulk transcript import (content preserved verbatim). |
+| `jaal.setRunStatus` (`POST .../pause|resume`) | Pause/resume the simulation. |
+| `jaal.completeInvestigation` (`POST .../complete`) | Stop the run, auto-generate the final report. |
+| `jaal.archiveInvestigation` (`POST .../archive`) | Archive without deleting evidence/reports. |
+| `jaal.resetCase` / `jaal.seedDemo` / `jaal.resetDemo` | Demo lifecycle (reset restores the clean seeded demo state). |
+| `jaal.generateHash` (`POST /api/evidence/:id/hash`) | On-demand SHA-256. |
+| `jaal.verifyEvidence` (`POST /api/evidence/:id/verify`) | Recompute + compare → `match` / `mismatch` + integrity event. |
+| `jaal.setEvidenceContent` | Tamper simulation for integrity demos (flags the record). |
+| `jaal.setEvidenceNotes` (`PATCH /api/evidence/:id/notes`) | Analyst notes; never alters the hashed snapshot. |
+| `jaal.generateReport` (`POST /api/investigations/:id/report`) | Build report from stored data. |
+| `jaal.clearLogs` | Clear a case's console lines. |
+| `jaal.updateSettings` (`PATCH /api/settings`) | Validated settings patch, persisted per owner. |
+
+**Actions (LLM-augmented)**
+
+| Function | Purpose |
+| --- | --- |
+| `actions.sendMessageWithAI` | Tries Claude for strategy/reply context, falls back to the simulation engine (labeled). |
+| `actions.simulationNextWithAI` | Same for arc advancement. |
+| `actions.approveStrategyWithAI` | Sends the approved (possibly edited) decoy question through the pipeline. |
+| `actions.generateReportWithAI` | LLM report summary when configured, deterministic otherwise. |
+
+All functions enforce owner authorization server-side; case-scoped mutations
+resolve the investigation through the owner index and never trust a
+client-claimed caseId alone.
+
+## Testing
+
+```bash
+bun run test        # vitest run — 34 tests
+```
+
+- `src/services/pipeline.test.ts` — unit tests for tactic detection, kill-chain
+  progression, identifier extraction (incl. dedupe + false-positive guards),
+  SHA-256 (canonical test vector), tamper detection, strategy generation,
+  simulation branching and report building.
+- `src/convex/workflow.test.ts` — integration tests against the mock Convex
+  runtime (`convex-test`): create → message → analyze → extract → hash →
+  verify (match, then tamper → mismatch) → complete → report; plus
+  dedupe across messages, per-case rate limiting, pause/resume, archive,
+  settings persistence, demo seed/reset, and cross-owner authorization
+  rejection.
+
+The suite runs entirely without an external AI provider (simulation engine).
+
 ## Verifying the backend from the CLI
 
 ```bash
@@ -270,8 +339,21 @@ npx convex run jaal:seedDemo '{}'
 npx convex run jaal:createInvestigation '{caseId:"JAAL-100",title:"Test",category:"Digital arrest scam",description:"d",notes:"n",source:"simulation",detectionMode:"simulation",flags:{tacticDetection:true,identifierExtraction:true,integrityHashing:true,aiSuggestions:true}}'
 npx convex run actions:sendMessageWithAI '{caseId:"JAAL-100",text:"Which department is issuing this notice?"}'
 npx convex run jaal:state '{}'
-npx convex run jaal:resetDemo '{}'   # restore the clean demo cases
+npx convex run jaal:resetDemo '{}'   # wipe + restore the clean demo cases
 ```
+
+## Running locally
+
+```bash
+bun install
+bun run dev        # Vite dev server (frontend + Convex via VITE_CONVEX_URL)
+npx convex dev     # Convex dev process (pushes functions, syncs deployment)
+bun run test       # backend + service test suite
+bunx tsc -b --noEmit   # typecheck
+```
+
+No separate API server is required — Convex is the backend. Demo mode works
+with zero configuration; add `ANTHROPIC_API_KEY` to enable the LLM engine.
 
 # Using the Convex backend
 
