@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
+import { useQuery } from "convex/react";
 import { BottomConsole } from "@/components/console/BottomConsole";
 import { ConversationConsole } from "@/components/conversation/ConversationConsole";
 import { EvidenceBoard, type BoardSelection } from "@/components/board/EvidenceBoard";
@@ -11,9 +12,15 @@ import { DetectedTactics } from "@/components/analysis/DetectedTactics";
 import { CaseRail } from "@/components/investigation/CaseRail";
 import { WorkspaceHeader } from "@/components/investigation/WorkspaceHeader";
 import { Panel } from "@/components/ui/panel";
+import { api } from "@/convex/_generated/api";
 import { useJaal } from "@/state/JaalProvider";
 import { cn } from "@/lib/utils";
-import type { CaseRuntime, Investigation } from "@/types/investigation";
+import type {
+  CaseRuntime,
+  DetectedTactic,
+  Investigation,
+} from "@/types/investigation";
+import type { GraphTacticData } from "@/types/evidenceGraph";
 import { Brain, Fingerprint, MessagesSquare, ScrollText, Waypoints } from "lucide-react";
 
 type MobileTab = "chat" | "board" | "evidence" | "logs";
@@ -51,6 +58,11 @@ export default function InvestigationWorkspacePage() {
   const [evidenceDrawerId, setEvidenceDrawerId] = useState<string | null>(null);
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const [boardSelection, setBoardSelection] = useState<BoardSelection>(null);
+
+  // Backend graph — powers the board and tactic→node selection mapping.
+  const graph = useQuery(api.evidenceGraph.getByInvestigation, {
+    investigationId: id ?? "",
+  });
 
   const investigation: Investigation | undefined = state.investigations.find(
     (i) => i.id === id,
@@ -92,6 +104,20 @@ export default function InvestigationWorkspacePage() {
     window.setTimeout(() => setHighlightMsgId(messageId), 10);
   };
 
+  /**
+   * Map a client DetectedTactic (composite id `tactic:messageId`) to its
+   * stable graph node id (`tac:<recordId>`). Matched on the persisted fields
+   * both projections carry — never fuzzy-matched.
+   */
+  const findTacticNodeId = (t: DetectedTactic): string | null => {
+    const node = graph?.nodes.find((n) => {
+      if (n.type !== "tactic") return false;
+      const d = n.data as GraphTacticData;
+      return d.tactic === t.tactic && (d.messageId ?? null) === (t.messageId ?? null);
+    });
+    return node?.id ?? null;
+  };
+
   const engineLabel =
     runtime.strategy?.source === "ANTHROPIC"
       ? "Convex action — Anthropic Claude"
@@ -99,12 +125,11 @@ export default function InvestigationWorkspacePage() {
 
   const board = (defaultView?: "board" | "list") => (
     <EvidenceBoard
-      runtime={runtime}
+      caseId={investigation.id}
       selected={boardSelection}
       onSelect={setBoardSelection}
       onOpenEvidence={setEvidenceDrawerId}
       onOpenSource={openSourceMessage}
-      messageNumbers={messageNumbers}
       defaultView={defaultView}
     />
   );
@@ -211,9 +236,16 @@ export default function InvestigationWorkspacePage() {
               <DetectedTactics
                 tactics={runtime.tactics}
                 messageNumbers={messageNumbers}
-                onSelectTactic={(t) =>
-                  setBoardSelection({ kind: "tactic", id: t.id })
-                }
+                onSelectTactic={(t) => {
+                  const nodeId = findTacticNodeId(t);
+                  if (nodeId) {
+                    setBoardSelection({ kind: "tactic", id: nodeId });
+                  } else if (t.messageId) {
+                    // Graph unavailable (loading/offline): keep the tactic →
+                    // supporting-message jump working via the conversation.
+                    openSourceMessage(t.messageId);
+                  }
+                }}
               />
             </div>
           </Panel>

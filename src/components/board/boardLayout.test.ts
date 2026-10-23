@@ -1,133 +1,215 @@
 import { describe, expect, it } from "vitest";
 import {
   NODE_SIZE,
-  computeLayout,
+  computeGraphLayout,
+  edgeById,
+  indexEdges,
+  neighborsOf,
+  nodeById,
   pinTilt,
-  relatedRecords,
   sourceAnchor,
   threadPath,
 } from "./boardLayout";
-import type { EvidenceItem } from "@/types/evidence";
-import type { CaseRuntime, DetectedTactic } from "@/types/investigation";
-import type { ConversationMessage } from "@/types/message";
+import type {
+  EvidenceGraph,
+  GraphEdge,
+  GraphNode,
+} from "@/types/evidenceGraph";
 
-/** Minimal runtime fixture — only the fields the board consumes. */
-function makeRuntime(overrides: Partial<CaseRuntime> = {}): CaseRuntime {
+/**
+ * Board layout tests — the board positions the backend graph contract; these
+ * verify band placement, relationship-driven positioning, determinism and
+ * selection neighborhoods against a synthetic EvidenceGraph fixture.
+ */
+
+function msg(id: string, n: number): GraphNode {
   return {
-    caseId: "JAAL-T1",
-    messages: [],
-    evidence: [],
-    tactics: [],
-    stages: [],
-    logs: [],
-    activities: [],
-    cursor: 0,
-    turnCount: 0,
-    status: "running",
-    startedAt: 0,
-    endedAt: null,
-    typing: false,
-    exhausted: false,
-    ...overrides,
+    id,
+    type: "message",
+    recordId: id.slice(4),
+    label: `MSG #${String(n).padStart(2, "0")}`,
+    timestamp: n,
+    data: {
+      sender: n % 2 ? "scammer" : "decoy",
+      messageNumber: n,
+      content: `text ${id}`,
+      source: "SIM-ENGINE",
+    },
   };
 }
 
-function msg(id: string, author: "scammer" | "decoy" | "system", ts: number): ConversationMessage {
-  return { id, caseId: "JAAL-T1", author, text: `text ${id}`, timestamp: ts, source: "SIM-ENGINE" };
-}
-
-function ev(id: string, sourceMessageId: string | null): EvidenceItem {
+function ind(id: string): GraphNode {
   return {
     id,
-    caseId: "JAAL-T1",
-    type: "upi",
+    type: "indicator",
+    recordId: id.slice(4),
     label: "UPI ID",
-    value: `value-${id}`,
-    content: `content-${id}`,
-    sourceMessageId,
-    sourceMessageText: "source",
-    extractedAt: 100,
-    notes: "",
-    hash: null,
-    hashGeneratedAt: null,
-    hashStatus: "none",
+    timestamp: 10,
+    data: {
+      evidenceType: "upi",
+      value: `v-${id}`,
+      normalizedValue: `v-${id}`,
+      extractionMethod: "TEST",
+    },
   };
 }
 
-function ta(id: string, messageId: string | null): DetectedTactic {
+function evi(id: string): GraphNode {
   return {
     id,
-    caseId: "JAAL-T1",
-    tactic: "payment_request",
-    messageId,
-    sourceText: "pay now",
-    timestamp: 100,
-    explanation: "asks for money",
+    type: "evidence",
+    recordId: id.slice(4),
+    label: "UPI ID",
+    timestamp: 10,
+    data: {
+      label: "UPI ID",
+      evidenceType: "upi",
+      value: `v-${id}`,
+      content: `c-${id}`,
+      integrity: {
+        algorithm: null,
+        hash: null,
+        status: "NOT_HASHED",
+        hashGeneratedAt: null,
+        tampered: false,
+      },
+      review: { status: null, note: null, reviewedAt: null },
+    },
   };
 }
 
-describe("computeLayout", () => {
-  it("creates one node per real message and excludes system lines", () => {
-    const rt = makeRuntime({
-      messages: [msg("m1", "scammer", 1), msg("m2", "decoy", 2), msg("sys", "system", 3)],
-    });
-    const { nodes } = computeLayout(rt);
-    expect(Object.keys(nodes).sort()).toEqual(["msg:m1", "msg:m2"]);
-  });
+function tac(id: string): GraphNode {
+  return {
+    id,
+    type: "tactic",
+    recordId: id.slice(4),
+    label: "Urgency",
+    timestamp: 10,
+    data: {
+      tactic: "urgency",
+      explanation: "pressure",
+      sourceText: "now",
+      messageId: null,
+    },
+  };
+}
 
-  it("creates nodes for every evidence item and tactic record", () => {
-    const rt = makeRuntime({
-      messages: [msg("m1", "scammer", 1)],
-      evidence: [ev("e1", "m1"), ev("e2", null)],
-      tactics: [ta("t1", "m1"), ta("t2", null)],
-    });
-    const { nodes } = computeLayout(rt);
+function edge(
+  type: GraphEdge["type"],
+  from: string,
+  to: string,
+  sourceRecordId = "rec-1",
+): GraphEdge {
+  return {
+    id: `${type}:${from}->${to}`,
+    type,
+    from,
+    to,
+    sourceRecordId,
+    basis: "test basis",
+    timestamp: 10,
+  };
+}
+
+function graph(nodes: GraphNode[], edges: GraphEdge[]): EvidenceGraph {
+  return {
+    investigationId: "JAAL-T1",
+    version: 1,
+    generatedAt: 1,
+    nodes,
+    edges,
+  };
+}
+
+describe("computeGraphLayout", () => {
+  it("positions all four node types in deterministic bands", () => {
+    const g = graph(
+      [msg("msg:m1", 1), ind("ind:e1"), evi("evi:e1"), tac("tac:t1")],
+      [],
+    );
+    const { nodes } = computeGraphLayout(g);
     expect(Object.keys(nodes).sort()).toEqual([
-      "ev:e1",
-      "ev:e2",
+      "evi:e1",
+      "ind:e1",
       "msg:m1",
-      "ta:t1",
-      "ta:t2",
+      "tac:t1",
     ]);
+    expect(nodes["tac:t1"]!.x).toBeLessThan(nodes["msg:m1"]!.x);
+    expect(nodes["msg:m1"]!.x).toBeLessThan(nodes["ind:e1"]!.x);
+    expect(nodes["ind:e1"]!.x).toBeLessThan(nodes["evi:e1"]!.x);
   });
 
-  it("places linked evidence to the right of its source and tactics to the left", () => {
-    const rt = makeRuntime({
-      messages: [msg("m1", "scammer", 1)],
-      evidence: [ev("e1", "m1")],
-      tactics: [ta("t1", "m1")],
-    });
-    const { nodes } = computeLayout(rt);
-    const m = nodes["msg:m1"]!;
-    expect(nodes["ev:e1"]!.x).toBeGreaterThan(m.x);
-    expect(nodes["ta:t1"]!.x).toBeLessThan(m.x);
+  it("creates a layout node for every backend node — nothing invented, nothing dropped", () => {
+    const g = graph(
+      [
+        msg("msg:m1", 1),
+        msg("msg:m2", 2),
+        ind("ind:e1"),
+        evi("evi:e1"),
+        tac("tac:t1"),
+        ind("ind:orphan"),
+      ],
+      [edge("EXTRACTED_FROM", "ind:e1", "msg:m1"), edge("PRESERVED_AS", "ind:e1", "evi:e1")],
+    );
+    const { nodes } = computeGraphLayout(g);
+    expect(new Set(Object.keys(nodes))).toEqual(
+      new Set(g.nodes.map((n) => n.id)),
+    );
   });
 
-  it("places unlinked records below the message spine (no fabricated anchor)", () => {
-    const rt = makeRuntime({
-      messages: [msg("m1", "scammer", 1)],
-      evidence: [ev("eX", null)],
-    });
-    const { nodes } = computeLayout(rt);
-    const m = nodes["msg:m1"]!;
-    expect(nodes["ev:eX"]!.y).toBeGreaterThan(m.y + NODE_SIZE.message.h);
+  it("anchors indicators to their extraction message (EXTRACTED_FROM) and evidence to its indicator (PRESERVED_AS)", () => {
+    const g = graph(
+      [msg("msg:m1", 1), ind("ind:e1"), evi("evi:e1")],
+      [
+        edge("EXTRACTED_FROM", "ind:e1", "msg:m1"),
+        edge("PRESERVED_AS", "ind:e1", "evi:e1"),
+      ],
+    );
+    const { nodes } = computeGraphLayout(g);
+    // Same vertical band as the source message; evidence shares the indicator row.
+    expect(nodes["ind:e1"]!.y).toBe(nodes["msg:m1"]!.y);
+    expect(nodes["evi:e1"]!.y).toBe(nodes["ind:e1"]!.y);
+  });
+
+  it("stacks co-extracted indicators on the same message without overlap", () => {
+    const g = graph(
+      [msg("msg:m1", 1), ind("ind:a"), ind("ind:b"), ind("ind:c")],
+      [
+        edge("EXTRACTED_FROM", "ind:a", "msg:m1"),
+        edge("EXTRACTED_FROM", "ind:b", "msg:m1"),
+        edge("EXTRACTED_FROM", "ind:c", "msg:m1"),
+      ],
+    );
+    const { nodes } = computeGraphLayout(g);
+    const ys = [nodes["ind:a"]!.y, nodes["ind:b"]!.y, nodes["ind:c"]!.y];
+    expect(new Set(ys).size).toBe(3);
+    for (const y of ys) {
+      expect(y).toBeGreaterThanOrEqual(nodes["msg:m1"]!.y);
+    }
+  });
+
+  it("places unlinked records in the bottom row without fabricating anchors", () => {
+    const g = graph([msg("msg:m1", 1), ind("ind:orphan")], []);
+    const { nodes } = computeGraphLayout(g);
+    expect(nodes["ind:orphan"]!.y).toBeGreaterThan(
+      nodes["msg:m1"]!.y + NODE_SIZE.message.h,
+    );
   });
 
   it("is deterministic for identical input", () => {
-    const rt = makeRuntime({
-      messages: [msg("m1", "scammer", 1), msg("m2", "decoy", 2)],
-      evidence: [ev("e1", "m1"), ev("e2", "m2")],
-      tactics: [ta("t1", "m2")],
-    });
-    expect(computeLayout(rt)).toEqual(computeLayout(rt));
+    const g = graph(
+      [msg("msg:m1", 1), msg("msg:m2", 2), ind("ind:e1")],
+      [edge("EXTRACTED_FROM", "ind:e1", "msg:m2")],
+    );
+    expect(computeGraphLayout(g)).toEqual(computeGraphLayout(g));
   });
 
   it("sizes the canvas to contain every node", () => {
-    const rt = makeRuntime({
-      messages: [msg("m1", "scammer", 1)],
-      evidence: [ev("e1", "m1")],
-    });
-    const { nodes, width, height } = computeLayout(rt);
+    const g = graph(
+      [msg("msg:m1", 1), ind("ind:e1"), evi("evi:e1"), tac("tac:t1")],
+      [],
+    );
+    const { nodes, width, height } = computeGraphLayout(g);
     for (const n of Object.values(nodes)) {
       expect(n.x + NODE_SIZE[n.kind].w).toBeLessThanOrEqual(width);
       expect(n.y + NODE_SIZE[n.kind].h).toBeLessThanOrEqual(height);
@@ -135,58 +217,72 @@ describe("computeLayout", () => {
   });
 });
 
-describe("relatedRecords — highlighting follows real links only", () => {
-  const runtime = makeRuntime({
-    messages: [msg("m1", "scammer", 1), msg("m2", "decoy", 2)],
-    evidence: [ev("e1", "m1"), ev("e2", "m2"), ev("e3", null)],
-    tactics: [ta("t1", "m1"), ta("t2", null)],
-  });
+describe("neighborsOf — selection follows backend edges only", () => {
+  const g = graph(
+    [msg("msg:m1", 1), ind("ind:e1"), evi("evi:e1"), tac("tac:t1"), ind("ind:x")],
+    [
+      edge("EXTRACTED_FROM", "ind:e1", "msg:m1"),
+      edge("PRESERVED_AS", "ind:e1", "evi:e1"),
+      edge("DETECTED_IN", "tac:t1", "msg:m1"),
+    ],
+  );
 
   it("returns null for no selection", () => {
-    expect(relatedRecords(runtime, null)).toBeNull();
+    expect(neighborsOf(g, null)).toBeNull();
   });
 
-  it("selecting a message highlights its extracted evidence and tactics", () => {
-    const rel = relatedRecords(runtime, { kind: "message", id: "m1" })!;
-    expect([...rel.messages]).toEqual(["m1"]);
-    expect([...rel.evidence]).toEqual(["e1"]);
-    expect([...rel.tactics]).toEqual(["t1"]);
+  it("selecting a message highlights its directly connected records", () => {
+    const nb = neighborsOf(g, { kind: "message", id: "msg:m1" })!;
+    expect([...nb.nodes].sort()).toEqual(["ind:e1", "msg:m1", "tac:t1"].sort());
+    expect(nb.edges.size).toBe(2);
   });
 
-  it("selecting evidence highlights its source message and sibling tactics", () => {
-    const rel = relatedRecords(runtime, { kind: "evidence", id: "e1" })!;
-    expect(rel.messages.has("m1")).toBe(true);
-    expect(rel.tactics.has("t1")).toBe(true);
-    expect(rel.evidence.has("e1")).toBe(true);
-    // Unrelated records stay out of the highlight set.
-    expect(rel.evidence.has("e2")).toBe(false);
+  it("selecting an indicator highlights its message and preserved evidence", () => {
+    const nb = neighborsOf(g, { kind: "indicator", id: "ind:e1" })!;
+    expect(nb.nodes.has("ind:e1")).toBe(true);
+    expect(nb.nodes.has("msg:m1")).toBe(true);
+    expect(nb.nodes.has("evi:e1")).toBe(true);
+    // One hop only — the tactic is not reached through the indicator.
+    expect(nb.nodes.has("tac:t1")).toBe(false);
+    expect(nb.edges.size).toBe(2);
   });
 
-  it("evidence with no source message highlights only itself", () => {
-    const rel = relatedRecords(runtime, { kind: "evidence", id: "e3" })!;
-    expect([...rel.messages]).toEqual([]);
-    expect([...rel.tactics]).toEqual([]);
-    expect([...rel.evidence]).toEqual(["e3"]);
+  it("an unlinked indicator highlights only itself", () => {
+    const nb = neighborsOf(g, { kind: "indicator", id: "ind:x" })!;
+    expect([...nb.nodes]).toEqual(["ind:x"]);
+    expect(nb.edges.size).toBe(0);
   });
 
-  it("selecting a tactic highlights its supporting message and that message's evidence", () => {
-    const rel = relatedRecords(runtime, { kind: "tactic", id: "t1" })!;
-    expect(rel.messages.has("m1")).toBe(true);
-    expect(rel.evidence.has("e1")).toBe(true);
-    expect(rel.evidence.has("e2")).toBe(false);
+  it("selecting an edge highlights its two endpoints and the edge", () => {
+    const nb = neighborsOf(g, {
+      kind: "edge",
+      id: "EXTRACTED_FROM:ind:e1->msg:m1",
+    })!;
+    expect([...nb.nodes].sort()).toEqual(["ind:e1", "msg:m1"]);
+    expect([...nb.edges]).toEqual(["EXTRACTED_FROM:ind:e1->msg:m1"]);
+  });
+
+  it("selecting a stale edge id returns null (dropped when record disappears)", () => {
+    expect(neighborsOf(g, { kind: "edge", id: "EXTRACTED_FROM:gone->gone" })).toBeNull();
   });
 });
 
-describe("sourceAnchor", () => {
-  it("anchors to the correct edge and vertical midpoint", () => {
-    expect(sourceAnchor("message", 100, 20, "right")).toEqual({
-      x: 100 + NODE_SIZE.message.w,
-      y: 20 + NODE_SIZE.message.h / 2,
-    });
-    expect(sourceAnchor("evidence", 100, 20, "left")).toEqual({
-      x: 100,
-      y: 20 + NODE_SIZE.evidence.h / 2,
-    });
+describe("lookups", () => {
+  const g = graph(
+    [msg("msg:m1", 1), ind("ind:e1")],
+    [edge("EXTRACTED_FROM", "ind:e1", "msg:m1")],
+  );
+  it("edgeById / nodeById resolve stable ids", () => {
+    expect(edgeById(g, "EXTRACTED_FROM:ind:e1->msg:m1")?.type).toBe("EXTRACTED_FROM");
+    expect(nodeById(g, "ind:e1")?.type).toBe("indicator");
+    expect(edgeById(g, "nope")).toBeNull();
+    expect(nodeById(g, "nope")).toBeNull();
+  });
+  it("indexEdges buckets each relationship type", () => {
+    const idx = indexEdges(g);
+    expect(idx.extractedFrom.get("ind:e1")).toBe("msg:m1");
+    expect(idx.detectedIn.size).toBe(0);
+    expect(idx.preservedAs.size).toBe(0);
   });
 });
 
@@ -203,7 +299,6 @@ describe("threadPath — pinned string between two anchors", () => {
     const to = { x: 300, y: 0 };
     const d1 = threadPath(from, to);
     expect(d1).toEqual(threadPath(from, to));
-    // Control points sit below the straight line (hanging string).
     const controlY = Number(d1.split(",")[0].trim().split(" ").pop());
     expect(controlY).toBeGreaterThan(0);
   });
@@ -221,7 +316,7 @@ describe("pinTilt — deterministic pinned-card angle", () => {
   });
 
   it("stays within ±0.9 degrees", () => {
-    for (const id of ["msg:m1", "ev:e2", "ta:t3", "msg:xyz-999"]) {
+    for (const id of ["msg:m1", "ind:e2", "tac:t3", "evi:xyz-999"]) {
       expect(Math.abs(pinTilt(id))).toBeLessThanOrEqual(0.9);
     }
   });
@@ -231,5 +326,18 @@ describe("pinTilt — deterministic pinned-card angle", () => {
       ["msg:a", "msg:b", "msg:c", "msg:d", "msg:e"].map(pinTilt),
     );
     expect(tilts.size).toBeGreaterThan(1);
+  });
+});
+
+describe("sourceAnchor", () => {
+  it("anchors to the correct edge and vertical midpoint", () => {
+    expect(sourceAnchor("message", 100, 20, "right")).toEqual({
+      x: 100 + NODE_SIZE.message.w,
+      y: 20 + NODE_SIZE.message.h / 2,
+    });
+    expect(sourceAnchor("evidence", 100, 20, "left")).toEqual({
+      x: 100,
+      y: 20 + NODE_SIZE.evidence.h / 2,
+    });
   });
 });

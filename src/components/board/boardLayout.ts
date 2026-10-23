@@ -1,21 +1,26 @@
-import type { CaseRuntime } from "@/types/investigation";
+import type {
+  EvidenceGraph,
+  GraphEdge,
+  GraphMessageData,
+  GraphNode,
+} from "@/types/evidenceGraph";
 
 /**
- * Pure layout + relationship logic for the evidence board.
+ * Pure layout + neighborhood logic for the evidence board.
  *
- * Extracted from the component so it can be unit-tested without a DOM. Every
- * edge in the graph corresponds to a real field in the case data (an evidence
- * item's sourceMessageId, a tactic's messageId) — this module never infers a
- * relationship that the data does not state.
+ * The board consumes the backend graph contract
+ * (`evidenceGraph.getByInvestigation`) directly: nodes are persisted records,
+ * edges are backend-provided relationships. This module only positions them
+ * and computes selection neighborhoods — it never invents a node or a
+ * relationship.
  */
 
 export type BoardSelection =
-  | { kind: "message"; id: string }
-  | { kind: "evidence"; id: string }
-  | { kind: "tactic"; id: string }
+  | { kind: "message" | "indicator" | "tactic" | "evidence"; id: string }
+  | { kind: "edge"; id: string }
   | null;
 
-export type NodeKind = "message" | "evidence" | "tactic";
+export type NodeKind = "message" | "indicator" | "tactic" | "evidence";
 
 export interface BaseNode {
   key: string;
@@ -27,14 +32,17 @@ export interface BaseNode {
 
 export const NODE_SIZE = {
   message: { w: 210, h: 64 },
-  evidence: { w: 200, h: 64 },
+  indicator: { w: 196, h: 60 },
+  evidence: { w: 204, h: 64 },
   tactic: { w: 172, h: 56 },
 } as const;
 
-export const MSG_X = 252;
+// Four bands: tactics (left) → messages (spine) → indicators → evidence (right).
 export const TA_X = 20;
-export const EV_X = 560;
-export const ROW_GAP = 90;
+export const MSG_X = 300;
+export const IND_X = 652;
+export const EVI_X = 898;
+export const ROW_GAP = 96;
 export const TOP = 26;
 
 export function sourceAnchor(
@@ -79,119 +87,156 @@ export function pinTilt(id: string): number {
   return ((h % 181) - 90) / 100;
 }
 
-/** Deterministic auto-layout: tactic band (left) → message spine → evidence (right). */
-export function computeLayout(runtime: CaseRuntime): {
+/** Index backend edges once for layout + neighborhoods. */
+export interface EdgeIndex {
+  /** indicator id → message id (EXTRACTED_FROM) */
+  extractedFrom: Map<string, string>;
+  /** tactic id → message id (DETECTED_IN) */
+  detectedIn: Map<string, string>;
+  /** indicator id → evidence id (PRESERVED_AS) */
+  preservedAs: Map<string, string>;
+  /** evidence id → indicator id (PRESERVED_AS, reversed) */
+  preservedFrom: Map<string, string>;
+}
+
+export function indexEdges(graph: EvidenceGraph): EdgeIndex {
+  const idx: EdgeIndex = {
+    extractedFrom: new Map(),
+    detectedIn: new Map(),
+    preservedAs: new Map(),
+    preservedFrom: new Map(),
+  };
+  for (const e of graph.edges) {
+    if (e.type === "EXTRACTED_FROM") idx.extractedFrom.set(e.from, e.to);
+    else if (e.type === "DETECTED_IN") idx.detectedIn.set(e.from, e.to);
+    else if (e.type === "PRESERVED_AS") {
+      idx.preservedAs.set(e.from, e.to);
+      idx.preservedFrom.set(e.to, e.from);
+    }
+  }
+  return idx;
+}
+
+/**
+ * Deterministic four-band layout driven entirely by backend graph data:
+ * tactic band (left) → message spine → indicator band → preserved-evidence
+ * band (right). Records without resolvable relationships sit in an unlinked
+ * row at the bottom — no edge is ever fabricated for them.
+ */
+export function computeGraphLayout(graph: EvidenceGraph): {
   nodes: Record<string, BaseNode>;
   width: number;
   height: number;
 } {
   const nodes: Record<string, BaseNode> = {};
-  const messages = runtime.messages
-    .filter((m) => m.author !== "system")
-    .sort((a, b) => a.timestamp - b.timestamp);
+  const idx = indexEdges(graph);
 
+  const messageNumber = (n: GraphNode) =>
+    (n.data as GraphMessageData).messageNumber;
+  const messages = [...graph.nodes]
+    .filter((n) => n.type === "message")
+    .sort((a, b) => messageNumber(a) - messageNumber(b) || a.id.localeCompare(b.id));
+
+  const msgY = new Map<string, number>();
   messages.forEach((m, i) => {
-    nodes[`msg:${m.id}`] = {
-      key: `msg:${m.id}`,
-      kind: "message",
-      id: m.id,
-      x: MSG_X,
-      y: TOP + i * ROW_GAP,
-    };
+    const y = TOP + i * ROW_GAP;
+    msgY.set(m.id, y);
+    nodes[m.id] = { key: m.id, kind: "message", id: m.id, x: MSG_X, y };
   });
 
-  const msgY = (id: string | null) =>
-    id && nodes[`msg:${id}`] ? nodes[`msg:${id}`]!.y : null;
+  const unlinkedBaseY = TOP + messages.length * ROW_GAP + 24;
+  let unlinkedRow = 0;
+  const nextUnlinkedY = () => unlinkedBaseY + unlinkedRow++ * 78;
 
-  const groupIndex = <T extends { id: string }>(
-    items: T[],
-    keyOf: (item: T) => string | null,
-  ): Map<string, number> => {
-    const counts = new Map<string, number>();
-    const out = new Map<string, number>();
-    for (const item of items) {
-      const k = keyOf(item) ?? "__unlinked__";
-      const idx = counts.get(k) ?? 0;
-      counts.set(k, idx + 1);
-      out.set(item.id, idx);
+  // Indicators — right of the message they were extracted from (EXTRACTED_FROM).
+  const indicators = graph.nodes.filter((n) => n.type === "indicator");
+  const sibCount = new Map<string, number>();
+  for (const ind of indicators) {
+    const msgId = idx.extractedFrom.get(ind.id) ?? null;
+    const baseY = msgId !== null ? msgY.get(msgId) : undefined;
+    let y: number;
+    if (baseY !== undefined) {
+      const sib = sibCount.get(msgId!) ?? 0;
+      sibCount.set(msgId!, sib + 1);
+      y = baseY + sib * 78;
+    } else {
+      y = nextUnlinkedY();
     }
-    return out;
-  };
+    nodes[ind.id] = { key: ind.id, kind: "indicator", id: ind.id, x: IND_X, y };
+  }
 
-  // Evidence nodes — right of their source message, or in a bottom row when
-  // the record has no source message (no edge is drawn for those).
-  const evIdx = groupIndex(runtime.evidence, (e) => e.sourceMessageId);
-  const unlinkedBaseY = TOP + messages.length * ROW_GAP + 20;
-  let unlinkedEv = 0;
-  let maxRight = EV_X + NODE_SIZE.evidence.w;
-  runtime.evidence.forEach((e) => {
-    const idx = evIdx.get(e.id) ?? 0;
-    const srcY = msgY(e.sourceMessageId);
-    const y = srcY !== null ? srcY + idx * 74 : unlinkedBaseY + unlinkedEv++ * 74;
-    const x = srcY !== null ? EV_X + (idx % 2) * 230 : EV_X;
-    nodes[`ev:${e.id}`] = { key: `ev:${e.id}`, kind: "evidence", id: e.id, x, y };
-    maxRight = Math.max(maxRight, x + NODE_SIZE.evidence.w);
-  });
+  // Preserved evidence — same row as its indicator (PRESERVED_AS).
+  for (const evi of graph.nodes) {
+    if (evi.type !== "evidence") continue;
+    const indId = idx.preservedFrom.get(evi.id) ?? null;
+    const anchor = indId !== null ? nodes[indId] : undefined;
+    nodes[evi.id] = {
+      key: evi.id,
+      kind: "evidence",
+      id: evi.id,
+      x: EVI_X,
+      y: anchor ? anchor.y : nextUnlinkedY(),
+    };
+  }
 
-  // Tactic nodes — left of their supporting message, or bottom-left unlinked.
-  const taIdx = groupIndex(runtime.tactics, (t) => t.messageId);
-  let unlinkedTa = 0;
-  runtime.tactics.forEach((t) => {
-    const idx = taIdx.get(t.id) ?? 0;
-    const srcY = msgY(t.messageId);
-    const y = srcY !== null ? srcY + idx * 66 : unlinkedBaseY + unlinkedTa++ * 66;
-    nodes[`ta:${t.id}`] = { key: `ta:${t.id}`, kind: "tactic", id: t.id, x: TA_X, y };
-  });
+  // Tactics — left of the message they were detected in (DETECTED_IN).
+  const tactics = graph.nodes.filter((n) => n.type === "tactic");
+  const taSib = new Map<string, number>();
+  for (const ta of tactics) {
+    const msgId = idx.detectedIn.get(ta.id) ?? null;
+    const baseY = msgId !== null ? msgY.get(msgId) : undefined;
+    let y: number;
+    if (baseY !== undefined) {
+      const sib = taSib.get(msgId!) ?? 0;
+      taSib.set(msgId!, sib + 1);
+      y = baseY + sib * 66;
+    } else {
+      y = nextUnlinkedY();
+    }
+    nodes[ta.id] = { key: ta.id, kind: "tactic", id: ta.id, x: TA_X, y };
+  }
 
   const ys = Object.values(nodes).map((n) => n.y + NODE_SIZE[n.kind].h);
   return {
     nodes,
-    width: Math.max(maxRight + 60, 960),
+    width: EVI_X + NODE_SIZE.evidence.w + 60,
     height: Math.max(...ys, 320) + 80,
   };
 }
 
 /**
- * Records related to the current selection — following only real data links:
- * a selected message links its extracted evidence and detected tactics; a
- * selected evidence item or tactic links back to its source message and to the
- * sibling records of that same message.
+ * Selection neighborhood — the selected record plus every node directly
+ * connected by a backend edge. Selecting an edge highlights its two
+ * endpoints. One hop only: relationships are never followed speculatively.
  */
-export function relatedRecords(
-  runtime: CaseRuntime,
+export function neighborsOf(
+  graph: EvidenceGraph,
   selected: BoardSelection,
-): { messages: Set<string>; evidence: Set<string>; tactics: Set<string> } | null {
+): { nodes: Set<string>; edges: Set<string> } | null {
   if (!selected) return null;
-  const messages = new Set<string>();
-  const evidence = new Set<string>();
-  const tactics = new Set<string>();
-
-  if (selected.kind === "message") {
-    messages.add(selected.id);
-    runtime.evidence.forEach(
-      (e) => e.sourceMessageId === selected.id && evidence.add(e.id),
-    );
-    runtime.tactics.forEach(
-      (t) => t.messageId === selected.id && tactics.add(t.id),
-    );
-  } else if (selected.kind === "evidence") {
-    evidence.add(selected.id);
-    const e = runtime.evidence.find((x) => x.id === selected.id);
-    if (e?.sourceMessageId) {
-      messages.add(e.sourceMessageId);
-      runtime.tactics.forEach(
-        (t) => t.messageId === e.sourceMessageId && tactics.add(t.id),
-      );
-    }
-  } else {
-    tactics.add(selected.id);
-    const t = runtime.tactics.find((x) => x.id === selected.id);
-    if (t?.messageId) {
-      messages.add(t.messageId);
-      runtime.evidence.forEach(
-        (e) => e.sourceMessageId === t.messageId && evidence.add(e.id),
-      );
+  if (selected.kind === "edge") {
+    const edge = graph.edges.find((e) => e.id === selected.id);
+    if (!edge) return null;
+    return { nodes: new Set([edge.from, edge.to]), edges: new Set([edge.id]) };
+  }
+  const nodes = new Set<string>([selected.id]);
+  const edges = new Set<string>();
+  for (const e of graph.edges) {
+    if (e.from === selected.id || e.to === selected.id) {
+      edges.add(e.id);
+      nodes.add(e.from);
+      nodes.add(e.to);
     }
   }
-  return { messages, evidence, tactics };
+  return { nodes, edges };
+}
+
+/** Edge lookup by stable id. */
+export function edgeById(graph: EvidenceGraph, id: string): GraphEdge | null {
+  return graph.edges.find((e) => e.id === id) ?? null;
+}
+
+/** Node lookup by stable id. */
+export function nodeById(graph: EvidenceGraph, id: string): GraphNode | null {
+  return graph.nodes.find((n) => n.id === id) ?? null;
 }
