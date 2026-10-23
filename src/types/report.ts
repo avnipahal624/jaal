@@ -14,6 +14,9 @@ export interface ReportEvidenceRow {
     note: string | null;
     reviewedAt: number | null;
   };
+  /** Optional on older stored reports (rendered as "—" when absent). */
+  sourceMessageId?: string | null;
+  sourceMessageNumber?: number | null;
 }
 
 export interface ReportSummary {
@@ -60,6 +63,9 @@ export interface EvidenceReport {
     timestamp: number;
     sourceText: string;
     explanation: string;
+    /** Optional on older stored reports. */
+    messageId?: string | null;
+    messageNumber?: number | null;
   }[];
   stages: {
     id: KillChainStageId;

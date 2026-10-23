@@ -429,6 +429,12 @@ describe("analyst review + report completeness", () => {
     expect(row.review.note).toBe("checked against transcript");
     // Hash lifecycle data is present on the row too.
     expect(row.hashStatus).toBe("generated");
+    // Source-message traceability for the indicators table.
+    expect(row.sourceMessageId).toBeTruthy();
+    expect(row.sourceMessageNumber).toBeGreaterThanOrEqual(1);
+    // Tactic rows carry their supporting message reference as well.
+    const linked = report.tactics.filter((t) => t.messageNumber != null);
+    expect(linked.length).toBeGreaterThan(0);
   });
 
   it("completing an investigation is idempotent — no duplicate reports on repeat calls", async () => {

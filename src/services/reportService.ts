@@ -24,6 +24,11 @@ export function buildReport(
     { collected: 0, hashed: 0, verified: 0, mismatched: 0, unhashed: 0 },
   );
 
+  const messageNumbers: Record<string, number> = {};
+  runtime.messages.forEach((m, i) => {
+    messageNumbers[m.id] = i + 1;
+  });
+
   return {
     id: `RPT-${investigation.id.replace("JAAL-", "")}-${now.toString(36).toUpperCase().slice(-5)}`,
     caseId: investigation.id,
@@ -50,6 +55,9 @@ export function buildReport(
       timestamp: t.timestamp,
       sourceText: t.sourceText,
       explanation: t.explanation,
+      messageId: t.messageId ?? null,
+      messageNumber:
+        t.messageId != null ? (messageNumbers[t.messageId] ?? null) : null,
     })),
     stages: runtime.stages.map((s) => ({
       id: s.id,
@@ -72,6 +80,11 @@ export function buildReport(
         note: e.reviewNote ?? null,
         reviewedAt: e.reviewedAt ?? null,
       },
+      sourceMessageId: e.sourceMessageId ?? null,
+      sourceMessageNumber:
+        e.sourceMessageId != null
+          ? (messageNumbers[e.sourceMessageId] ?? null)
+          : null,
     })),
     timeline: runtime.activities.map((a) => ({
       timestamp: a.timestamp,

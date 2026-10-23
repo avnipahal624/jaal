@@ -1,6 +1,7 @@
 import { Chip, HASH_LABEL, HASH_TONE } from "@/components/ui/panel";
 import { useJaal } from "@/state/JaalProvider";
 import { exportReportJson, printReport } from "@/services/reportService";
+import type { EvidenceReport } from "@/types/report";
 import { formatDateTime, formatTime } from "@/utils/formatters";
 import { shortHash } from "@/utils/hash";
 import { motion } from "framer-motion";
@@ -12,27 +13,51 @@ import {
 } from "lucide-react";
 import { Link, useParams } from "react-router";
 
-function Section({
+/**
+ * EVIDENCE REPORT — forensic case-file presentation.
+ *
+ * One markup, two skins: the rp-* design system in index.css renders the
+ * dossier dark on screen and as a light, ink-friendly paper document in the
+ * browser print/PDF output (accents carried by borders so meaning survives
+ * with background graphics disabled). All content comes from the stored
+ * report record — nothing here invents findings.
+ */
+
+function SectionHead({
   index,
   title,
-  children,
+  sub,
 }: {
   index: string;
   title: string;
-  children: React.ReactNode;
+  sub?: string;
 }) {
   return (
-    <section className="mt-6 break-inside-avoid">
-      <div className="mb-2 flex items-center gap-2 border-b border-jborder/70 pb-1.5">
-        <span className="font-mono text-xs font-semibold text-jcyan">{index}</span>
-        <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-jtext">
-          {title}
-        </h2>
-      </div>
-      {children}
-    </section>
+    <div className="rp-sec-head">
+      <span className="rp-sec-idx">{index}</span>
+      <h2 className="rp-sec-title">{title}</h2>
+      {sub && <span className="rp-sec-sub">{sub}</span>}
+    </div>
   );
 }
+
+const STATUS_TONE: Record<string, string> = {
+  active: "border-jcyan/60 bg-jcyan/10 text-jcyan",
+  completed: "border-jgreen/60 bg-jgreen/10 text-jgreen",
+  archived: "border-jborder text-jmuted",
+};
+
+const VERDICT_TONE: Record<string, string> = {
+  confirmed: "border-jgreen/60 bg-jgreen/10 text-jgreen",
+  incorrect: "border-jred/60 bg-jred/10 text-jred",
+  needs_review: "border-jamber/60 bg-jamber/10 text-jamber",
+};
+
+const VERDICT_LABEL: Record<string, string> = {
+  confirmed: "confirmed",
+  incorrect: "incorrect",
+  needs_review: "needs review",
+};
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -54,9 +79,33 @@ export default function ReportDetailPage() {
     );
   }
 
+  // Key findings — derived strictly from stored report data. Never invented.
+  const tacticNames = Array.from(new Set(report.tactics.map((t) => t.name)));
+  const keyFindings: { text: string; alert?: boolean }[] = [];
+  if (report.integrity.verified > 0) {
+    keyFindings.push({
+      text: `${report.integrity.verified} of ${report.evidenceCount} preserved indicators integrity-verified — recomputed SHA-256 matches the recorded baseline.`,
+    });
+  }
+  if (report.integrity.mismatched > 0) {
+    keyFindings.push({
+      text: `${report.integrity.mismatched} indicator${report.integrity.mismatched === 1 ? "" : "s"} FAILED integrity verification — stored content changed after recording. Treat as altered.`,
+      alert: true,
+    });
+  }
+  if (tacticNames.length > 0) {
+    keyFindings.push({
+      text: `${report.tactics.length} manipulation tactic detections across the conversation: ${tacticNames.join(", ")}.`,
+    });
+  }
+  keyFindings.push({
+    text: `Kill-chain reached: ${report.currentStage.toUpperCase()} · conversation recorded: ${report.transcript.length} messages · case status: ${report.status}.`,
+  });
+  const reviewedRows = report.evidence.filter((e) => e.review?.status);
+
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6">
-      {/* Toolbar */}
+      {/* Toolbar — screen only */}
       <div className="jaal-no-print mb-4 flex flex-wrap items-center gap-2">
         <Link
           to="/reports"
@@ -86,236 +135,279 @@ export default function ReportDetailPage() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
-        className="jaal-panel jaal-print-sheet relative p-5 sm:p-7"
+        className="rp-sheet p-5 sm:p-7"
       >
-        {/* Report head */}
-        <header className="border-b border-jborder/70 pb-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="jaal-label">JAAL · evidence report</p>
-              <h1 className="mt-1.5 text-xl font-bold leading-tight text-jtext sm:text-2xl">
-                {report.title}
-              </h1>
-              <p className="mt-1 font-mono text-[11px] text-jmuted">
-                {report.id} · case {report.caseId} · {report.category}
-              </p>
-            </div>
-            <Chip tone="border-jamber/50 bg-jamber/10 text-jamber">
-              simulated report
-            </Chip>
+        {/* ======================= MASTHEAD ======================= */}
+        <header className="rp-masthead">
+          <div>
+            <p className="rp-wordmark">JAAL</p>
+            <p className="rp-doctype mt-0.5">Forensics console · evidence report</p>
           </div>
-          <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {[
-              ["Generated", formatDateTime(report.generatedAt)],
-              ["Analyst", report.generatedBy],
-              ["Evidence", String(report.evidenceCount)],
-              ["Current stage", report.currentStage],
-            ].map(([k, v]) => (
-              <div key={k} className="border border-jborder/60 bg-jsurface/70 px-2.5 py-1.5">
-                <dt className="jaal-label !text-[9px]">{k}</dt>
-                <dd className="mt-0.5 truncate font-mono text-[11px] text-jtext">{v}</dd>
-              </div>
-            ))}
-          </dl>
+          <div className="text-right">
+            <p className="rp-caseref">CASE / {report.caseId}</p>
+            <p className="rp-doctype mt-0.5">
+              {report.id} · generated {formatDateTime(report.generatedAt)}
+            </p>
+          </div>
         </header>
+        <div className="rp-accent-rule" />
 
-        {/* 1 · Case summary */}
-        <Section index="01" title="Case summary">
-          <p className="text-[13px] leading-relaxed text-jtext/90">
-            {report.description}
-          </p>
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-jmuted">
-            status {report.status} · simulated conversation · synthetic identifiers only
-          </p>
-        </Section>
-
-        {/* 2 · Executive summary */}
-        <Section index="02" title="Executive summary">
-          <div className="space-y-1.5">
-            <div className="border-l-2 border-jcyan/60 bg-jcyan/[0.05] px-2.5 py-1.5">
-              <p className="jaal-label !text-[9px]">Claimed scam scenario</p>
-              <p className="mt-1 text-[12px] leading-relaxed text-jtext/90">
-                {report.summary.scenario || "—"}
-              </p>
-            </div>
-            <div className="border-l-2 border-jamber/60 bg-jamber/[0.05] px-2.5 py-1.5">
-              <p className="jaal-label !text-[9px]">Manipulation tactics</p>
-              <p className="mt-1 text-[12px] leading-relaxed text-jtext/90">
-                {report.summary.tactics || "—"}
-              </p>
-            </div>
-            <div className="border-l-2 border-jred/60 bg-jred/[0.05] px-2.5 py-1.5">
-              <p className="jaal-label !text-[9px]">Payment request details</p>
-              <p className="mt-1 text-[12px] leading-relaxed text-jtext/90">
-                {report.summary.payment || "—"}
-              </p>
-            </div>
+        {/* ======================= TITLE + STATUS ======================= */}
+        <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
+          <h1 className="max-w-2xl text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
+            {report.title}
+          </h1>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Chip tone={STATUS_TONE[report.status] ?? "border-jborder text-jmuted"}>
+              {report.status}
+            </Chip>
+            {report.simulated && (
+              <Chip tone="border-jamber/60 bg-jamber/10 text-jamber">
+                simulated report
+              </Chip>
+            )}
+            <Chip tone="border-jborder/60 text-jmuted">{report.category}</Chip>
           </div>
-          {report.summary.moments.length > 0 && (
-            <div className="mt-2">
-              <p className="jaal-label !text-[9px] mb-1.5">Important moments</p>
-              <ul className="space-y-1">
-                {report.summary.moments.map((m, i) => (
-                  <li
-                    key={i}
-                    className="border border-jborder/50 bg-jsurface px-2.5 py-1.5"
-                  >
-                    <p className="font-mono text-[9px] uppercase tracking-wider text-jamber">
-                      {m.label} · {formatTime(m.timestamp)}
-                    </p>
-                    <p className="mt-0.5 text-[11px] leading-relaxed text-jtext/85">
-                      “{m.text}”
-                    </p>
+        </div>
+
+        {/* ======================= METADATA STRIP ======================= */}
+        <dl className="rp-meta mt-4">
+          {[
+            ["Case ID", report.caseId],
+            ["Analyst", report.generatedBy],
+            ["Generated", formatDateTime(report.generatedAt)],
+            ["Stage", report.currentStage],
+            ["Evidence", String(report.evidenceCount)],
+          ].map(([k, v]) => (
+            <div key={k} className="rp-meta-cell">
+              <dt className="rp-label">{k}</dt>
+              <dd className="rp-meta-value">{v}</dd>
+            </div>
+          ))}
+        </dl>
+
+        {/* ======================= 01 · CASE SUMMARY + KEY FINDINGS ======================= */}
+        <section className="rp-sec">
+          <SectionHead index="01" title="Case summary" sub="investigative briefing" />
+          <div className="rp-brief">
+            <p className="text-[13px] leading-relaxed">{report.description}</p>
+            <p className="rp-label mt-1.5">
+              status {report.status} · simulated conversation · synthetic identifiers only
+            </p>
+            <div className="rp-findings">
+              <p className="rp-label !text-jcyan">Key findings</p>
+              <ul className="mt-1">
+                {keyFindings.map((f, i) => (
+                  <li key={i} className={f.alert ? "rp-alert" : undefined}>
+                    {f.text}
                   </li>
                 ))}
               </ul>
             </div>
-          )}
-        </Section>
+          </div>
+        </section>
 
-        {/* 3 · Unknowns */}
-        <Section index="03" title="What we could not establish">
+        {/* ======================= 02 · EXECUTIVE SUMMARY ======================= */}
+        <section className="rp-sec">
+          <SectionHead index="02" title="Executive summary" sub="engine-generated narrative" />
+          <div className="space-y-2">
+            <div className="rp-quote rp-decoy">
+              <p className="rp-label !text-jteal">Claimed scam scenario</p>
+              <p className="rp-quote-text">{report.summary.scenario || "—"}</p>
+            </div>
+            <div className="rp-quote">
+              <p className="rp-label !text-jamber">Manipulation tactics</p>
+              <p className="rp-quote-text">{report.summary.tactics || "—"}</p>
+            </div>
+            <div className="rp-quote">
+              <p className="rp-label !text-jred">Payment request details</p>
+              <p className="rp-quote-text">{report.summary.payment || "—"}</p>
+            </div>
+          </div>
+          {report.summary.moments.length > 0 && (
+            <div className="mt-3">
+              <p className="rp-label mb-1.5">Important moments</p>
+              <div className="space-y-2">
+                {report.summary.moments.map((m, i) => (
+                  <div key={i} className="rp-quote">
+                    <p className="rp-mono text-[9px] uppercase tracking-[0.18em] text-jamber">
+                      {m.label} · {formatTime(m.timestamp)}
+                    </p>
+                    <p className="rp-quote-text">“{m.text}”</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ======================= 03 · LIMITATIONS ======================= */}
+        <section className="rp-sec">
+          <SectionHead index="03" title="What we could not establish" sub="limitations" />
           {report.unknowns.length === 0 ? (
-            <p className="text-xs text-jmuted">No gaps recorded.</p>
+            <p className="text-xs opacity-70">No gaps recorded.</p>
           ) : (
-            <ul className="list-disc space-y-1 pl-4 text-[12px] leading-relaxed text-jtext/90">
+            <ul className="rp-findings mt-0">
               {report.unknowns.map((u, i) => (
                 <li key={i}>{u}</li>
               ))}
             </ul>
           )}
-        </Section>
+        </section>
 
-        {/* 4 · Transcript */}
-        <Section index="04" title="Conversation transcript">
+        {/* ======================= 04 · TRANSCRIPT ======================= */}
+        <section className="rp-sec">
+          <SectionHead
+            index="04"
+            title="Conversation transcript"
+            sub={`${report.transcript.length} recorded messages`}
+          />
           {report.transcript.length === 0 ? (
-            <p className="text-xs text-jmuted">No messages recorded.</p>
+            <p className="text-xs opacity-70">No messages recorded.</p>
           ) : (
-            <ul className="space-y-1.5">
+            <div className="space-y-2">
               {report.transcript.map((m, i) => (
-                <li
+                <div
                   key={i}
-                  className={`border-l-2 px-2.5 py-1.5 ${
-                    m.author === "scammer"
-                      ? "border-jred/60 bg-jred/[0.05]"
-                      : m.author === "decoy"
-                        ? "border-jcyan/60 bg-jcyan/[0.05]"
-                        : "border-jborder bg-jsurface/60"
-                  }`}
+                  className={`rp-quote ${m.author === "decoy" ? "rp-decoy" : ""}`}
                 >
-                  <p className="font-mono text-[9px] uppercase tracking-widest text-jmuted">
-                    {m.author} · {formatTime(m.timestamp)}
-                  </p>
-                  <p className="text-[12px] leading-relaxed text-jtext/90">{m.text}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        {/* 5 · Tactic analysis */}
-        <Section index="05" title="Scam tactic analysis">
-          {report.tactics.length === 0 ? (
-            <p className="text-xs text-jmuted">No tactics detected.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {report.tactics.map((t, i) => (
-                <div key={i} className="border border-jborder/60 bg-jsurface/70 px-2.5 py-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[12px] font-semibold text-jamber">
-                      {t.name}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rp-mono text-[9px] font-semibold uppercase tracking-[0.18em]">
+                      MSG #{String(i + 1).padStart(2, "0")}
                     </span>
-                    <span className="font-mono text-[9px] text-jmuted">
+                    <span
+                      className={`rp-mono text-[9px] uppercase tracking-[0.18em] ${
+                        m.author === "scammer" ? "text-jred" : "text-jteal"
+                      }`}
+                    >
+                      {m.author === "scammer" ? "suspect" : m.author}
+                    </span>
+                    <span className="rp-mono text-[9px] opacity-60">
+                      {formatTime(m.timestamp)}
+                    </span>
+                  </div>
+                  <p className="rp-quote-text">{m.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ======================= 05 · TACTICS ======================= */}
+        <section className="rp-sec">
+          <SectionHead
+            index="05"
+            title="Scam tactic analysis"
+            sub={`${report.tactics.length} detections · ${tacticNames.length} tactic types`}
+          />
+          {report.tactics.length === 0 ? (
+            <p className="text-xs opacity-70">No tactics detected.</p>
+          ) : (
+            <div className="space-y-2">
+              {report.tactics.map((t, i) => (
+                <div key={i} className="rp-callout">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Chip tone="border-jamber/50 bg-jamber/10 text-jamber">
+                      {t.name}
+                    </Chip>
+                    {t.messageNumber != null && (
+                      <span className="rp-mono text-[9px] uppercase tracking-[0.18em]">
+                        source MSG #
+                        {String(t.messageNumber).padStart(2, "0")}
+                      </span>
+                    )}
+                    <span className="rp-mono text-[9px] opacity-60">
                       {formatDateTime(t.timestamp)}
                     </span>
                   </div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-jmuted">
+                  <p className="mt-1 text-[12px] leading-relaxed opacity-80">
                     {t.explanation}
                   </p>
-                  <p className="mt-1 line-clamp-2 border-l-2 border-jborder/70 pl-2 text-[11px] text-jtext/80">
+                  <p className="mt-1 border-l-2 border-jborder/70 pl-2 text-[12px] leading-relaxed">
                     “{t.sourceText}”
                   </p>
                 </div>
               ))}
             </div>
           )}
-        </Section>
+        </section>
 
-        {/* 6 · Kill-chain */}
-        <Section index="06" title="Kill-chain progression">
+        {/* ======================= 06 · KILL-CHAIN ======================= */}
+        <section className="rp-sec">
+          <SectionHead index="06" title="Kill-chain progression" sub="content-derived stages" />
           <ol className="space-y-1.5">
             {report.stages.map((s) => (
               <li
                 key={s.id}
-                className={`flex flex-wrap items-center gap-2 border px-2.5 py-1.5 ${
-                  s.status === "active"
-                    ? "border-jamber/50 bg-jamber/10"
-                    : s.status === "pending"
-                      ? "border-jborder/60 opacity-60"
-                      : "border-jteal/40 bg-jteal/[0.07]"
-                }`}
+                className="flex flex-wrap items-center gap-2 border border-jborder/60 px-2.5 py-1.5"
               >
-                <span className="font-mono text-[11px] font-semibold text-jcyan">
+                <span className="rp-mono text-[11px] font-semibold">
                   0{s.number}
                 </span>
-                <span className="text-[12px] font-medium text-jtext">{s.label}</span>
+                <span className="text-[12px] font-medium">{s.label}</span>
                 <Chip
                   tone={
                     s.status === "active"
-                      ? "border-jamber/60 text-jamber"
+                      ? "border-jamber/60 bg-jamber/10 text-jamber"
                       : s.status === "pending"
                         ? "border-jborder text-jmuted"
-                        : "border-jteal/50 text-jteal"
+                        : "border-jteal/50 bg-jteal/10 text-jteal"
                   }
                   className="ml-auto"
                 >
                   {s.status}
                 </Chip>
                 {s.detectedAt && (
-                  <span className="w-full font-mono text-[9px] text-jmuted">
+                  <span className="rp-mono w-full text-[9px] opacity-70">
                     {formatDateTime(s.detectedAt)} — {s.reason}
                   </span>
                 )}
               </li>
             ))}
           </ol>
-        </Section>
+        </section>
 
-        {/* 7 · Extracted identifiers */}
-        <Section index="07" title="Extracted identifiers & hashes">
+        {/* ======================= 07 · INDICATORS ======================= */}
+        <section className="rp-sec">
+          <SectionHead
+            index="07"
+            title="Extracted identifiers & hashes"
+            sub={`${report.evidence.length} items · sha-256`}
+          />
           {report.evidence.length === 0 ? (
-            <p className="text-xs text-jmuted">No identifiers extracted.</p>
+            <p className="text-xs opacity-70">No identifiers extracted.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left">
+              <table className="rp-table">
                 <thead>
-                  <tr className="border-b border-jborder/70">
-                    {["Type", "Value", "Extracted", "SHA-256", "Status"].map((h) => (
-                      <th
-                        key={h}
-                        className="jaal-label !text-[9px] whitespace-nowrap px-2 py-1.5"
-                      >
-                        {h}
-                      </th>
-                    ))}
+                  <tr>
+                    <th>Type</th>
+                    <th>Value</th>
+                    <th>Source</th>
+                    <th>Extracted</th>
+                    <th>SHA-256</th>
+                    <th>Status / review</th>
                   </tr>
                 </thead>
                 <tbody>
                   {report.evidence.map((e) => (
-                    <tr key={e.id} className="border-b border-jborder/40">
-                      <td className="px-2 py-1.5 font-mono text-[10px] uppercase text-jmuted">
+                    <tr key={e.id}>
+                      <td className="rp-mono text-[10px] uppercase">
                         {e.label}
                       </td>
-                      <td className="max-w-52 truncate px-2 py-1.5 font-mono text-[11px] text-jcyan">
-                        {e.value}
+                      <td className="rp-value">{e.value}</td>
+                      <td className="rp-mono whitespace-nowrap text-[10px] opacity-80">
+                        {e.sourceMessageNumber != null
+                          ? `MSG #${String(e.sourceMessageNumber).padStart(2, "0")}`
+                          : "—"}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-1.5 font-mono text-[10px] text-jmuted">
+                      <td className="rp-mono whitespace-nowrap text-[10px] opacity-70">
                         {formatDateTime(e.extractedAt)}
                       </td>
-                      <td className="px-2 py-1.5 font-mono text-[10px] text-jteal">
+                      <td className="rp-mono text-[10px]">
                         {e.hash ? shortHash(e.hash, 12) : "—"}
                       </td>
-                      <td className="px-2 py-1.5">
+                      <td>
                         <span className="flex flex-wrap items-center gap-1">
                           <Chip
                             tone={
@@ -323,21 +415,17 @@ export default function ReportDetailPage() {
                                 "border-jborder text-jmuted"
                             }
                           >
-                            {HASH_LABEL[e.hashStatus as keyof typeof HASH_LABEL] ?? e.hashStatus}
+                            {HASH_LABEL[e.hashStatus as keyof typeof HASH_LABEL] ??
+                              e.hashStatus}
                           </Chip>
                           {e.review?.status && (
                             <Chip
                               tone={
-                                e.review.status === "confirmed"
-                                  ? "border-jgreen/50 bg-jgreen/10 text-jgreen"
-                                  : e.review.status === "incorrect"
-                                    ? "border-jred/50 bg-jred/10 text-jred"
-                                    : "border-jamber/50 bg-jamber/10 text-jamber"
+                                VERDICT_TONE[e.review.status] ??
+                                "border-jborder text-jmuted"
                               }
                             >
-                              {e.review.status === "needs_review"
-                                ? "needs review"
-                                : `analyst: ${e.review.status}`}
+                              {VERDICT_LABEL[e.review.status] ?? e.review.status}
                             </Chip>
                           )}
                         </span>
@@ -348,45 +436,102 @@ export default function ReportDetailPage() {
               </table>
             </div>
           )}
-        </Section>
 
-        {/* 8 · Timeline */}
-        <Section index="08" title="Investigation timeline">
+          {/* Analyst verdicts — original findings stay visible above */}
+          {reviewedRows.length > 0 && (
+            <div className="mt-3 border border-jborder/60 p-3">
+              <p className="rp-label !text-jteal">Analyst verdicts</p>
+              <div className="mt-1.5 space-y-1.5">
+                {reviewedRows.map((e) => (
+                  <div
+                    key={e.id}
+                    className="flex flex-wrap items-baseline gap-2 border-l-2 border-jteal/60 pl-2.5"
+                  >
+                    <span className="rp-mono text-[11px]">{e.value}</span>
+                    <Chip
+                      tone={
+                        VERDICT_TONE[e.review!.status!] ??
+                        "border-jborder text-jmuted"
+                      }
+                    >
+                      {VERDICT_LABEL[e.review!.status!] ?? e.review!.status}
+                    </Chip>
+                    {e.review!.note && (
+                      <span className="text-[11px] leading-relaxed opacity-80">
+                        {e.review!.note}
+                      </span>
+                    )}
+                    {e.review!.reviewedAt && (
+                      <span className="rp-mono text-[9px] opacity-60">
+                        {formatDateTime(e.review!.reviewedAt)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ======================= 08 · TIMELINE ======================= */}
+        <section className="rp-sec">
+          <SectionHead
+            index="08"
+            title="Investigation timeline"
+            sub={`${report.timeline.length} events`}
+          />
           {report.timeline.length === 0 ? (
-            <p className="text-xs text-jmuted">No timeline events.</p>
+            <p className="text-xs opacity-70">No timeline events.</p>
           ) : (
             <ul className="space-y-1">
               {report.timeline.map((t, i) => (
-                <li key={i} className="flex gap-2 font-mono text-[10px] leading-relaxed">
-                  <span className="shrink-0 text-jmuted/70">{formatTime(t.timestamp)}</span>
-                  <span className="text-jcyan/70">{t.kind}</span>
-                  <span className="text-jtext/85">{t.title}</span>
-                  <span className="truncate text-jmuted">{t.detail}</span>
+                <li
+                  key={i}
+                  className="flex gap-2 rp-mono text-[10px] leading-relaxed"
+                >
+                  <span className="shrink-0 opacity-60">
+                    {formatTime(t.timestamp)}
+                  </span>
+                  <span className="shrink-0">{t.kind}</span>
+                  <span className="font-semibold">{t.title}</span>
+                  <span className="truncate opacity-70">{t.detail}</span>
                 </li>
               ))}
             </ul>
           )}
-        </Section>
+        </section>
 
-        {/* 9 · Integrity */}
-        <Section index="09" title="Integrity verification results">
-          <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {/* ======================= 09 · INTEGRITY ======================= */}
+        <section className="rp-sec">
+          <SectionHead
+            index="09"
+            title="Evidence integrity"
+            sub="sha-256 · web crypto"
+          />
+          <div className="rp-integrity-grid">
             {[
-              ["Collected", report.integrity.collected, "text-jcyan"],
-              ["Hashed", report.integrity.hashed, "text-jteal"],
+              ["Collected", report.integrity.collected, ""],
+              ["Hash generated", report.integrity.hashed, ""],
               ["Verified", report.integrity.verified, "text-jgreen"],
-              ["Mismatched", report.integrity.mismatched, "text-jred"],
-              ["Unhashed", report.integrity.unhashed, "text-jmuted"],
+              ["Mismatch", report.integrity.mismatched, "text-jred"],
+              ["Not hashed", report.integrity.unhashed, "text-jamber"],
             ].map(([k, v, tone]) => (
-              <div key={k as string} className="border border-jborder/60 bg-jsurface/70 px-2 py-1.5 text-center">
-                <p className={`font-mono text-lg font-semibold ${tone}`}>{v}</p>
-                <p className="jaal-label !text-[8px]">{k}</p>
+              <div key={k as string} className="rp-state">
+                <p className={`rp-state-num ${tone}`}>{v}</p>
+                <p className="rp-state-label">{k}</p>
               </div>
             ))}
           </div>
-          <ul className="space-y-1">
+          <p className="rp-mono mt-2 text-[9px] leading-relaxed opacity-70">
+            Verified = recomputed content hash matches the recorded baseline. A
+            hash merely existing (HASH GENERATED) is NOT a verified state.
+          </p>
+          <ul className="mt-2 space-y-1">
             {report.verification.map((v) => (
-              <li key={v.id} className="flex flex-wrap items-center gap-2 px-0.5 text-[11px]">
+              <li
+                key={v.id}
+                className="flex flex-wrap items-center gap-2 border border-jborder/50 px-2 py-1"
+              >
                 <Chip
                   tone={
                     HASH_TONE[v.status as keyof typeof HASH_TONE] ??
@@ -395,33 +540,40 @@ export default function ReportDetailPage() {
                 >
                   {HASH_LABEL[v.status as keyof typeof HASH_LABEL] ?? v.status}
                 </Chip>
-                <span className="truncate font-mono text-[10px] text-jtext/85">
-                  {v.label}
-                </span>
-                <span className="text-[10px] text-jmuted">{v.note}</span>
+                <span className="rp-mono text-[10px]">{v.label}</span>
+                <span className="text-[10px] opacity-70">{v.note}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-2 border border-jamber/40 bg-jamber/10 px-2.5 py-1.5 text-[10px] leading-relaxed text-jamber">
+          <p className="mt-2 border-l-[3px] border-jamber px-2.5 py-1.5 text-[10.5px] leading-relaxed">
             A matching hash proves stored content is unchanged since recording.
-            It does not prove an identifier is genuine, that any person committed
-            a crime, or that this report is legally admissible.
+            It does not prove an identifier is genuine, that any person
+            committed a crime, or that this report is legally admissible.
           </p>
-        </Section>
+        </section>
 
-        {/* 10 · Notes */}
-        <Section index="10" title="Analyst notes">
-          <p className="text-[12px] leading-relaxed text-jtext/90">
-            {report.analystNotes}
-          </p>
-        </Section>
+        {/* ======================= 10 · ANALYST NOTES ======================= */}
+        <section className="rp-sec">
+          <SectionHead index="10" title="Analyst notes" />
+          <p className="text-[12.5px] leading-relaxed">{report.analystNotes}</p>
+        </section>
 
-        <footer className="mt-6 flex flex-wrap items-center justify-between gap-2 border-t border-jborder/70 pt-3 font-mono text-[9px] uppercase tracking-widest text-jmuted/70">
+        {/* Footer */}
+        <footer className="mt-7 flex flex-wrap items-center justify-between gap-2 border-t border-jborder/70 pt-3 rp-mono text-[9px] uppercase tracking-[0.2em] opacity-70">
           <span>JAAL · every message is a clue</span>
           <span>
             {report.id} · generated {formatDateTime(report.generatedAt)}
           </span>
         </footer>
+
+        {/* Print-only running footer — repeats per page in Chromium print */}
+        <div className="rp-runfoot">
+          <span>JAAL forensics console · evidence report</span>
+          <span>
+            case {report.caseId} · {report.id}
+          </span>
+          <span>simulated report — synthetic identifiers</span>
+        </div>
       </motion.article>
 
       <p className="jaal-no-print mt-3 text-center text-[10px] text-jmuted/70">
