@@ -92,6 +92,9 @@ export function docToEvidence(doc: Doc<"evidence">): EvidenceItem {
     hashGeneratedAt: doc.hashGeneratedAt ?? null,
     hashStatus: HASH_STATUS_MAP[doc.integrityStatus],
     tampered: doc.tampered,
+    reviewStatus: doc.reviewStatus ?? null,
+    reviewNote: doc.reviewNote ?? null,
+    reviewedAt: doc.reviewedAt ?? null,
   };
 }
 

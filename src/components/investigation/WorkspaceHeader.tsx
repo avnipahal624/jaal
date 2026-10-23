@@ -85,9 +85,15 @@ export function WorkspaceHeader({
               <span className="border border-jborder/60 px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-jmuted">
                 {investigation.category}
               </span>
-              <span className="flex items-center gap-1 border border-jcyan/40 bg-jcyan/10 px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-jcyan">
-                <Radio className="size-2.5" /> simulation mode
-              </span>
+              {runtime.strategy?.source === "ANTHROPIC" ? (
+                <span className="flex items-center gap-1 border border-jgreen/40 bg-jgreen/10 px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-jgreen">
+                  <Radio className="size-2.5" /> anthropic claude
+                </span>
+              ) : (
+                <span className="flex items-center gap-1 border border-jcyan/40 bg-jcyan/10 px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-jcyan">
+                  <Radio className="size-2.5" /> simulation mode
+                </span>
+              )}
               <Chip tone={RUN_STATUS_TONE[status]} pulse={status === "running"}>
                 {status === "running" ? "live" : status}
               </Chip>

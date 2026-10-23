@@ -94,6 +94,22 @@ function EvidenceRow({
             </span>
           )}
           <span>· {formatClock(item.extractedAt)}</span>
+          {item.reviewStatus && (
+            <span
+              className={cn(
+                "border px-1 py-px",
+                item.reviewStatus === "confirmed"
+                  ? "border-jgreen/50 text-jgreen"
+                  : item.reviewStatus === "incorrect"
+                    ? "border-jred/50 text-jred"
+                    : "border-jamber/50 text-jamber",
+              )}
+            >
+              {item.reviewStatus === "needs_review"
+                ? "review"
+                : item.reviewStatus}
+            </span>
+          )}
         </span>
       </span>
     </motion.button>

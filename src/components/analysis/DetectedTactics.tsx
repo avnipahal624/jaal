@@ -18,10 +18,13 @@ const TACTIC_TONE: Record<string, string> = {
 export function DetectedTactics({
   tactics,
   messageNumbers,
+  onSelectTactic,
 }: {
   tactics: DetectedTactic[];
   /** message id → MSG #NN */
   messageNumbers: Record<string, number>;
+  /** Report the clicked tactic (e.g. to highlight it on the evidence board). */
+  onSelectTactic?: (tactic: DetectedTactic) => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const sorted = useMemo(
@@ -51,7 +54,10 @@ export function DetectedTactics({
           <li key={t.id}>
             <button
               type="button"
-              onClick={() => setExpanded(isOpen ? null : t.id)}
+              onClick={() => {
+                setExpanded(isOpen ? null : t.id);
+                onSelectTactic?.(t);
+              }}
               className="flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-accent/40"
             >
               <span

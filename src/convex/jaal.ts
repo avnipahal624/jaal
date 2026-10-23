@@ -1157,6 +1157,45 @@ export const setEvidenceNotes = mutation({
   },
 });
 
+/**
+ * Analyst review of an extracted item (Confirmed / Incorrect / Needs review).
+ * The verdict is stored separately — extraction fields (value, content, hash)
+ * are never altered by a review.
+ */
+export const reviewEvidence = mutation({
+  args: {
+    evidenceId: v.id("evidence"),
+    status: v.union(
+      v.literal("confirmed"),
+      v.literal("incorrect"),
+      v.literal("needs_review"),
+    ),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, { evidenceId, status, note }) => {
+    const doc = await ctx.db.get(evidenceId);
+    if (!doc) return;
+    const owner = await requireOwner(ctx);
+    if (doc.owner !== owner) throw new Error("Not authorized");
+    const at = Date.now();
+    await ctx.db.patch(evidenceId, {
+      reviewStatus: status,
+      reviewNote: note ?? doc.reviewNote,
+      reviewedAt: at,
+    });
+    const inv = await ctx.db.get(doc.investigationId);
+    if (inv) {
+      const label =
+        status === "confirmed"
+          ? "confirmed by analyst"
+          : status === "incorrect"
+            ? "marked incorrect by analyst"
+            : "flagged for review";
+      await pushLog(ctx.db, inv, "info", `Analyst review · ${doc.label} ${label}`, at);
+    }
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Reports
 // ---------------------------------------------------------------------------

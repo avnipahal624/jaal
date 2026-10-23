@@ -15,6 +15,7 @@ import { formatDateTime } from "@/utils/formatters";
 import { copyToClipboard } from "@/utils/export";
 import { shortHash } from "@/utils/hash";
 import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -49,13 +50,19 @@ export function EvidenceDrawer({
   onOpenChange: (open: boolean) => void;
   onOpenSource?: () => void;
 }) {
-  const { generateHash, verifyEvidence, setEvidenceContent, setEvidenceNotes } =
-    useJaal();
+  const {
+    generateHash,
+    verifyEvidence,
+    setEvidenceContent,
+    setEvidenceNotes,
+    reviewEvidence,
+  } = useJaal();
   const [busy, setBusy] = useState<null | "hash" | "verify">(null);
   const [result, setResult] = useState<null | "match" | "mismatch" | "error">(null);
   const [editing, setEditing] = useState(false);
   const [draftContent, setDraftContent] = useState("");
   const [notes, setNotes] = useState("");
+  const [reviewDraft, setReviewDraft] = useState("");
 
   useEffect(() => {
     if (item) {
@@ -63,6 +70,7 @@ export function EvidenceDrawer({
       setEditing(false);
       setDraftContent(item.content);
       setNotes(item.notes);
+      setReviewDraft(item.reviewNote ?? "");
     }
   }, [item?.id, item?.hashStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -338,6 +346,86 @@ export function EvidenceDrawer({
                 </p>
               )}
             </div>
+          </div>
+
+          {/* Analyst review — verdict stored separately from the extraction */}
+          <div className="border border-jborder/70 bg-jsurface p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="jaal-label">Analyst review</p>
+              {item.reviewedAt && (
+                <span className="font-mono text-[9px] uppercase tracking-widest text-jmuted/70">
+                  reviewed {formatDateTime(item.reviewedAt)}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-[10px] leading-relaxed text-jmuted">
+              Record your verdict on this extraction. The review is stored
+              separately — the original value, content and hash are never
+              altered.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(
+                [
+                  {
+                    status: "confirmed" as const,
+                    label: "Confirmed",
+                    Icon: CheckCircle2,
+                    tone:
+                      "border-jgreen/50 bg-jgreen/10 text-jgreen hover:bg-jgreen/20",
+                  },
+                  {
+                    status: "incorrect" as const,
+                    label: "Incorrect",
+                    Icon: XCircle,
+                    tone: "border-jred/50 bg-jred/10 text-jred hover:bg-jred/20",
+                  },
+                  {
+                    status: "needs_review" as const,
+                    label: "Needs review",
+                    Icon: AlertTriangle,
+                    tone:
+                      "border-jamber/50 bg-jamber/10 text-jamber hover:bg-jamber/20",
+                  },
+                ]
+              ).map(({ status, label, Icon, tone }) => {
+                const active = item.reviewStatus === status;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => {
+                      reviewEvidence(caseId, item.id, status);
+                      toast.success(`Analyst review saved · ${label}`, {
+                        duration: 1600,
+                      });
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors",
+                      tone,
+                      active && "ring-1 ring-current",
+                    )}
+                  >
+                    <Icon className="size-3" /> {label}
+                    {active && <span className="text-[8px]">· current</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <Textarea
+              value={reviewDraft}
+              onChange={(e) => setReviewDraft(e.target.value)}
+              onBlur={() =>
+                reviewEvidence(
+                  caseId,
+                  item.id,
+                  item.reviewStatus ?? "needs_review",
+                  reviewDraft,
+                )
+              }
+              rows={2}
+              placeholder="Review note (why confirmed / incorrect)…"
+              className="mt-2 border-jborder/70 bg-background font-mono text-[11px] text-jtext placeholder:text-jmuted/40 focus-visible:border-jcyan/70 focus-visible:ring-jcyan/40"
+            />
           </div>
 
           {/* Notes */}

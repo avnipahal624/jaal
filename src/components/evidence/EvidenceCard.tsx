@@ -121,6 +121,21 @@ export function EvidenceCard({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <Chip tone={HASH_TONE[item.hashStatus]}>{HASH_LABEL[item.hashStatus]}</Chip>
+        {item.reviewStatus && (
+          <Chip
+            tone={
+              item.reviewStatus === "confirmed"
+                ? "border-jgreen/50 bg-jgreen/10 text-jgreen"
+                : item.reviewStatus === "incorrect"
+                  ? "border-jred/50 bg-jred/10 text-jred"
+                  : "border-jamber/50 bg-jamber/10 text-jamber"
+            }
+          >
+            {item.reviewStatus === "needs_review"
+              ? "needs review"
+              : `analyst: ${item.reviewStatus}`}
+          </Chip>
+        )}
         <span className="font-mono text-[9px] uppercase tracking-widest text-jmuted/70">
           {formatClock(item.extractedAt)}
         </span>

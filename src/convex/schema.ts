@@ -154,6 +154,16 @@ const schema = defineSchema(
       hashGeneratedAt: v.optional(v.number()),
       notes: v.string(),
       tampered: v.optional(v.boolean()),
+      /** Analyst review verdict — stored separately from the original extraction. */
+      reviewStatus: v.optional(
+        v.union(
+          v.literal("confirmed"),
+          v.literal("incorrect"),
+          v.literal("needs_review"),
+        ),
+      ),
+      reviewNote: v.optional(v.string()),
+      reviewedAt: v.optional(v.number()),
       createdAt: v.number(),
     }).index("by_investigation", ["investigationId"]),
 

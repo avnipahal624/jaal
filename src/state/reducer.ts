@@ -10,7 +10,10 @@ import {
 } from "@/services/investigationService";
 import { toEvidenceItem, type EvidenceDraft } from "@/services/evidenceService";
 import type { BackendStatus } from "@/services/api";
-import type { EvidenceItem } from "@/types/evidence";
+import type {
+  EvidenceItem,
+  EvidenceReviewStatus,
+} from "@/types/evidence";
 import type {
   ActivityEvent,
   CaseRuntime,
@@ -285,6 +288,13 @@ export type Action =
     }
   | { type: "SET_EVIDENCE_CONTENT"; caseId: string; evidenceId: string; content: string }
   | { type: "SET_EVIDENCE_NOTES"; caseId: string; evidenceId: string; notes: string }
+  | {
+      type: "REVIEW_EVIDENCE";
+      caseId: string;
+      evidenceId: string;
+      status: EvidenceReviewStatus;
+      note?: string;
+    }
   | { type: "REPORT_CREATED"; report: EvidenceReport }
   | { type: "UPDATE_SETTINGS"; patch: SettingsPatch }
   | { type: "NOTIFY"; notification: Omit<AppNotification, "id" | "read" | "timestamp"> }
@@ -798,6 +808,28 @@ export function reducer(state: JaalState, action: Action): JaalState {
             ...e,
             notes: action.notes,
           })),
+        })),
+      };
+
+    case "REVIEW_EVIDENCE":
+      return {
+        ...state,
+        sessions: updateRuntime(state, action.caseId, (rt) => ({
+          ...rt,
+          evidence: updateEvidence(rt, action.evidenceId, (e) => ({
+            ...e,
+            reviewStatus: action.status,
+            reviewNote: action.note ?? e.reviewNote ?? null,
+            reviewedAt: Date.now(),
+          })),
+          logs: capLogs([
+            ...rt.logs,
+            logEntry(
+              action.caseId,
+              "info",
+              `Analyst review · ${action.status.replace("_", " ")}`,
+            ),
+          ]),
         })),
       };
 

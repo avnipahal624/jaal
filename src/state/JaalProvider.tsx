@@ -23,6 +23,7 @@ import { arcExhausted, nextScammerTurn } from "@/services/simulationService";
 import type { Investigation, ScamCategory, DetectionMode } from "@/types/investigation";
 import type { ConversationMessage } from "@/types/message";
 import type { EvidenceReport } from "@/types/report";
+import type { EvidenceReviewStatus } from "@/types/evidence";
 import {
   loadState,
   reducer,
@@ -72,6 +73,13 @@ interface JaalContextValue {
   verifyEvidence: (caseId: string, evidenceId: string) => Promise<"match" | "mismatch" | "error">;
   setEvidenceContent: (caseId: string, evidenceId: string, content: string) => void;
   setEvidenceNotes: (caseId: string, evidenceId: string, notes: string) => void;
+  /** Analyst review verdict — stored separately from the extraction. */
+  reviewEvidence: (
+    caseId: string,
+    evidenceId: string,
+    status: EvidenceReviewStatus,
+    note?: string,
+  ) => void;
   // reports
   createReport: (caseId: string) => EvidenceReport | null;
   // settings / notifications
@@ -127,6 +135,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   const verifyEvidenceMut = useMutation(api.jaal.verifyEvidence);
   const setContentMut = useMutation(api.jaal.setEvidenceContent);
   const setNotesMut = useMutation(api.jaal.setEvidenceNotes);
+  const reviewMut = useMutation(api.jaal.reviewEvidence);
   const generateReportMut = useMutation(api.jaal.generateReport);
   const updateSettingsMut = useMutation(api.jaal.updateSettings);
 
@@ -783,6 +792,24 @@ export function JaalProvider({ children }: { children: ReactNode }) {
     [remote, setNotesMut],
   );
 
+  const reviewEvidence = useCallback(
+    (
+      caseId: string,
+      evidenceId: string,
+      status: EvidenceReviewStatus,
+      note?: string,
+    ) => {
+      if (remote) {
+        void reviewMut({ evidenceId: evidenceId as never, status, note }).catch(
+          () => undefined,
+        );
+        return;
+      }
+      dispatch({ type: "REVIEW_EVIDENCE", caseId, evidenceId, status, note });
+    },
+    [remote, reviewMut],
+  );
+
   const createReport = useCallback(
     (caseId: string): EvidenceReport | null => {
       const snapshot = stateRef.current;
@@ -862,6 +889,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       verifyEvidence,
       setEvidenceContent,
       setEvidenceNotes,
+      reviewEvidence,
       createReport,
       updateSettings,
       notify,
@@ -889,6 +917,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       verifyEvidence,
       setEvidenceContent,
       setEvidenceNotes,
+      reviewEvidence,
       createReport,
       updateSettings,
       notify,

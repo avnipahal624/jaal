@@ -18,6 +18,9 @@ export type HashStatus =
   | "verified" // recomputed hash matches recorded hash
   | "mismatch"; // recomputed hash differs from recorded hash
 
+/** Analyst verdict — stored separately from the original extraction. */
+export type EvidenceReviewStatus = "confirmed" | "incorrect" | "needs_review";
+
 export interface EvidenceItem {
   id: string;
   caseId: string;
@@ -39,6 +42,9 @@ export interface EvidenceItem {
   hashStatus: HashStatus;
   /** Set when the analyst edited content on purpose to demo a mismatch */
   tampered?: boolean;
+  reviewStatus?: EvidenceReviewStatus | null;
+  reviewNote?: string | null;
+  reviewedAt?: number | null;
 }
 
 export type EvidenceFilter =
