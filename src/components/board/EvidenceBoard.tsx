@@ -19,8 +19,10 @@ import { useMemo, useRef, useState } from "react";
 import {
   NODE_SIZE,
   computeLayout,
+  pinTilt,
   relatedRecords,
   sourceAnchor,
+  threadPath,
   type BaseNode,
   type BoardSelection,
   type NodeKind,
@@ -46,6 +48,7 @@ interface Edge {
   id: string;
   from: { x: number; y: number };
   to: { x: number; y: number };
+  link: "evidence" | "tactic";
   hot: boolean;
 }
 
@@ -113,6 +116,7 @@ export function EvidenceBoard({
         id: `e-${e.id}`,
         from: sourceAnchor("message", m.x, m.y, "right"),
         to: sourceAnchor("evidence", t.x, t.y, "left"),
+        link: "evidence",
         hot: hotEdge(e.sourceMessageId, e.id),
       });
     }
@@ -125,6 +129,7 @@ export function EvidenceBoard({
         id: `t-${t.id}`,
         from: sourceAnchor("tactic", n.x, n.y, "right"),
         to: sourceAnchor("message", m.x, m.y, "left"),
+        link: "tactic",
         hot: hotEdge(t.messageId, t.id),
       });
     }
@@ -388,25 +393,49 @@ export function EvidenceBoard({
             aria-hidden
           >
             {edges.map((edge) => {
-              const mx = (edge.from.x + edge.to.x) / 2;
+              const tone =
+                edge.link === "evidence"
+                  ? {
+                      line: edge.hot
+                        ? "stroke-jcyan/95 [stroke-width:1.7]"
+                        : "stroke-jcyan/45 [stroke-width:1]",
+                      pin: "fill-jcyan",
+                    }
+                  : {
+                      line: edge.hot
+                        ? "stroke-jamber/95 [stroke-width:1.7]"
+                        : "stroke-jamber/40 [stroke-width:1]",
+                      pin: "fill-jamber",
+                    };
               return (
                 <g key={edge.id}>
+                  {/* String: gentle hanging curve between the two pins */}
                   <path
-                    d={`M ${edge.from.x} ${edge.from.y} C ${mx} ${edge.from.y}, ${mx} ${edge.to.y}, ${edge.to.x} ${edge.to.y}`}
+                    d={threadPath(edge.from, edge.to)}
                     className={cn(
                       "fill-none transition-all duration-200",
-                      edge.hot
-                        ? "stroke-jcyan/90 [stroke-width:1.6]"
-                        : "stroke-jteal/40 [stroke-width:1]",
+                      tone.line,
+                    )}
+                  />
+                  {/* Pin dots at both string ends */}
+                  <circle
+                    cx={edge.from.x}
+                    cy={edge.from.y}
+                    r={2.4}
+                    className={cn(
+                      "transition-opacity duration-200",
+                      tone.pin,
+                      edge.hot ? "opacity-100" : "opacity-60",
                     )}
                   />
                   <circle
                     cx={edge.to.x}
                     cy={edge.to.y}
-                    r={edge.hot ? 3 : 2}
+                    r={edge.hot ? 3.4 : 2.8}
                     className={cn(
                       "transition-all duration-200",
-                      edge.hot ? "fill-jcyan" : "fill-jteal/60",
+                      tone.pin,
+                      edge.hot ? "opacity-100" : "opacity-80",
                     )}
                   />
                 </g>
@@ -429,9 +458,14 @@ export function EvidenceBoard({
                   onPointerDown={(e) => handlePointerDown(e, node)}
                   onPointerMove={handlePointerMove}
                   onPointerUp={(e) => handlePointerUp(e, node)}
-                  style={{ left: node.x, top: node.y, width: NODE_SIZE.message.w }}
+                  style={{
+                    left: node.x,
+                    top: node.y,
+                    width: NODE_SIZE.message.w,
+                    transform: isSel ? "rotate(0deg)" : `rotate(${pinTilt(node.id)}deg)`,
+                  }}
                   className={cn(
-                    "jaal-board-node h-16 cursor-grab border bg-panel/95 px-2 py-1.5 transition-opacity active:cursor-grabbing",
+                    "jaal-board-node h-16 cursor-grab border bg-panel/95 px-2 py-1.5 transition-opacity transition-transform duration-200 active:cursor-grabbing",
                     isScam ? "border-jred/50" : "border-jcyan/50",
                     isSel &&
                       "ring-1 ring-jcyan shadow-[0_0_12px_rgba(57,214,232,0.25)]",
@@ -471,9 +505,14 @@ export function EvidenceBoard({
                   onPointerDown={(e) => handlePointerDown(e, node)}
                   onPointerMove={handlePointerMove}
                   onPointerUp={(e) => handlePointerUp(e, node)}
-                  style={{ left: node.x, top: node.y, width: NODE_SIZE.evidence.w }}
+                  style={{
+                    left: node.x,
+                    top: node.y,
+                    width: NODE_SIZE.evidence.w,
+                    transform: isSel ? "rotate(0deg)" : `rotate(${pinTilt(node.id)}deg)`,
+                  }}
                   className={cn(
-                    "jaal-board-node h-16 cursor-grab border border-jcyan/45 bg-panel/95 px-2 py-1.5 transition-opacity active:cursor-grabbing",
+                    "jaal-board-node h-16 cursor-grab border border-jcyan/45 bg-panel/95 px-2 py-1.5 transition-opacity transition-transform duration-200 active:cursor-grabbing",
                     isSel &&
                       "ring-1 ring-jcyan shadow-[0_0_12px_rgba(57,214,232,0.25)]",
                     ev.hashStatus === "mismatch" && "border-jred/60",
@@ -537,9 +576,14 @@ export function EvidenceBoard({
                 onPointerDown={(e) => handlePointerDown(e, node)}
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => handlePointerUp(e, node)}
-                style={{ left: node.x, top: node.y, width: NODE_SIZE.tactic.w }}
+                style={{
+                  left: node.x,
+                  top: node.y,
+                  width: NODE_SIZE.tactic.w,
+                  transform: isSel ? "rotate(0deg)" : `rotate(${pinTilt(node.id)}deg)`,
+                }}
                 className={cn(
-                  "jaal-board-node h-14 cursor-grab border border-jamber/45 bg-panel/95 px-2 py-1.5 transition-opacity active:cursor-grabbing",
+                  "jaal-board-node h-14 cursor-grab border border-jamber/45 bg-panel/95 px-2 py-1.5 transition-opacity transition-transform duration-200 active:cursor-grabbing",
                   isSel &&
                     "ring-1 ring-jamber shadow-[0_0_12px_rgba(255,170,69,0.25)]",
                   isDim && "opacity-30",

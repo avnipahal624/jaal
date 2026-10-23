@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   NODE_SIZE,
   computeLayout,
+  pinTilt,
   relatedRecords,
   sourceAnchor,
+  threadPath,
 } from "./boardLayout";
 import type { EvidenceItem } from "@/types/evidence";
 import type { CaseRuntime, DetectedTactic } from "@/types/investigation";
@@ -185,5 +187,49 @@ describe("sourceAnchor", () => {
       x: 100,
       y: 20 + NODE_SIZE.evidence.h / 2,
     });
+  });
+});
+
+describe("threadPath — pinned string between two anchors", () => {
+  it("starts at the source anchor and ends at the target anchor", () => {
+    const d = threadPath({ x: 0, y: 0 }, { x: 200, y: 100 });
+    expect(d.startsWith("M 0 0")).toBe(true);
+    expect(d.endsWith("200 100")).toBe(true);
+    expect(d).toContain("C");
+  });
+
+  it("sags downward and is deterministic", () => {
+    const from = { x: 0, y: 0 };
+    const to = { x: 300, y: 0 };
+    const d1 = threadPath(from, to);
+    expect(d1).toEqual(threadPath(from, to));
+    // Control points sit below the straight line (hanging string).
+    const controlY = Number(d1.split(",")[0].trim().split(" ").pop());
+    expect(controlY).toBeGreaterThan(0);
+  });
+
+  it("caps the sag for very long threads", () => {
+    const d = threadPath({ x: 0, y: 0 }, { x: 5000, y: 0 });
+    const controlY = Number(d.split(",")[0].trim().split(" ").pop());
+    expect(controlY).toBeLessThanOrEqual(26);
+  });
+});
+
+describe("pinTilt — deterministic pinned-card angle", () => {
+  it("is deterministic per id", () => {
+    expect(pinTilt("msg:m1")).toEqual(pinTilt("msg:m1"));
+  });
+
+  it("stays within ±0.9 degrees", () => {
+    for (const id of ["msg:m1", "ev:e2", "ta:t3", "msg:xyz-999"]) {
+      expect(Math.abs(pinTilt(id))).toBeLessThanOrEqual(0.9);
+    }
+  });
+
+  it("varies across ids (cards are not all tilted the same way)", () => {
+    const tilts = new Set(
+      ["msg:a", "msg:b", "msg:c", "msg:d", "msg:e"].map(pinTilt),
+    );
+    expect(tilts.size).toBeGreaterThan(1);
   });
 });

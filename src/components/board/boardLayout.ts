@@ -50,6 +50,35 @@ export function sourceAnchor(
   };
 }
 
+/**
+ * Hanging-string thread between two anchor points — a gentle downward sag,
+ * like a pin-to-pin string on a physical evidence board. Deterministic: same
+ * endpoints always produce the same curve.
+ */
+export function threadPath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): string {
+  const dx = Math.abs(to.x - from.x);
+  const sag = Math.min(26, 10 + dx * 0.06);
+  const span = to.x - from.x;
+  const c1 = { x: from.x + span * 0.35, y: from.y + sag };
+  const c2 = { x: from.x + span * 0.65, y: to.y + sag };
+  return `M ${from.x} ${from.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${to.x} ${to.y}`;
+}
+
+/**
+ * Deterministic pinned-card tilt (±0.9°) derived from the node id — cards on
+ * a physical evidence board are never perfectly square to the grid.
+ */
+export function pinTilt(id: string): number {
+  let h = 7;
+  for (let i = 0; i < id.length; i++) {
+    h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return ((h % 181) - 90) / 100;
+}
+
 /** Deterministic auto-layout: tactic band (left) → message spine → evidence (right). */
 export function computeLayout(runtime: CaseRuntime): {
   nodes: Record<string, BaseNode>;
