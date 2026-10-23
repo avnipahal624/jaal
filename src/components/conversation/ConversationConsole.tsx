@@ -1,6 +1,6 @@
 import { MessageComposer } from "@/components/conversation/MessageComposer";
 import { MessageRow, TypingIndicator } from "@/components/conversation/MessageRow";
-import { Chip, RUN_STATUS_TONE } from "@/components/ui/panel";
+import { Chip, RUN_STATUS_STYLE } from "@/components/ui/panel";
 import { useJaal } from "@/state/JaalProvider";
 import { useSimulation } from "@/hooks/useSimulation";
 import type { CaseRuntime, Investigation } from "@/types/investigation";
@@ -116,7 +116,7 @@ export function ConversationConsole({
         <div className="flex min-w-0 items-center gap-2">
           <Radio className={cn("size-3.5 shrink-0", isRunning ? "text-jred jaal-pulse" : "text-jmuted")} />
           <p className="jaal-label !text-jcyan">Live intercept</p>
-          <Chip tone={RUN_STATUS_TONE[runtime.status]} pulse={isRunning}>
+          <Chip style={RUN_STATUS_STYLE[runtime.status]} pulse={isRunning}>
             {runtime.status === "running" ? "live" : runtime.status}
           </Chip>
           <span className="hidden font-mono text-[9px] uppercase tracking-widest text-jmuted sm:inline">

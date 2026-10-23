@@ -15,6 +15,7 @@ import { Panel } from "@/components/ui/panel";
 import { api } from "@/convex/_generated/api";
 import { useJaal } from "@/state/JaalProvider";
 import { cn } from "@/lib/utils";
+import { statusStyle } from "@/theme/status";
 import type {
   CaseRuntime,
   DetectedTactic,
@@ -120,8 +121,8 @@ export default function InvestigationWorkspacePage() {
 
   const engineLabel =
     runtime.strategy?.source === "ANTHROPIC"
-      ? "Convex action — Anthropic Claude"
-      : "Simulation mode — analysis engine";
+      ? "claude / live ai"
+      : "simulation";
 
   const board = (defaultView?: "board" | "list") => (
     <EvidenceBoard
@@ -208,7 +209,15 @@ export default function InvestigationWorkspacePage() {
           <Panel
             label="AI analysis"
             right={
-              <span className="whitespace-nowrap font-mono text-[8px] uppercase tracking-widest text-jmuted/80">
+              <span
+                className="whitespace-nowrap border px-1.5 py-px font-mono text-[8px] uppercase tracking-widest"
+                style={statusStyle(
+                  "engine",
+                  runtime.strategy?.source === "ANTHROPIC"
+                    ? "claude"
+                    : "simulation",
+                )}
+              >
                 {engineLabel}
               </span>
             }

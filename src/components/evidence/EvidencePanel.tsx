@@ -2,6 +2,13 @@ import { EVIDENCE_ICON } from "@/components/evidence/EvidenceCard";
 import { Chip, Panel } from "@/components/ui/panel";
 import { useEvidence } from "@/hooks/useEvidence";
 import { cn } from "@/lib/utils";
+import {
+  indicatorAccent,
+  integrityKey,
+  reviewKey,
+  statusDot,
+  statusStyle,
+} from "@/theme/status";
 import type { EvidenceFilter, EvidenceItem } from "@/types/evidence";
 import { Fingerprint, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -18,25 +25,11 @@ const FILTERS: { id: EvidenceFilter; label: string }[] = [
   { id: "unverified", label: "Unverified" },
 ];
 
-const HASH_DOT: Record<EvidenceItem["hashStatus"], string> = {
-  none: "bg-jmuted/50",
-  generated: "bg-jcyan",
-  verified: "bg-jgreen",
-  mismatch: "bg-jred",
-};
-
 const HASH_TEXT: Record<EvidenceItem["hashStatus"], string> = {
   none: "unverified",
   generated: "hashed",
   verified: "verified",
   mismatch: "mismatch",
-};
-
-const HASH_TEXT_COLOR: Record<EvidenceItem["hashStatus"], string> = {
-  none: "text-jmuted",
-  generated: "text-jcyan",
-  verified: "text-jgreen",
-  mismatch: "text-jred",
 };
 
 /** Compact evidence row: type, value, source message, timestamp, integrity. */
@@ -65,7 +58,10 @@ function EvidenceRow({
           : "border-l-jcyan/60",
       )}
     >
-      <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center border border-jborder/60 text-jcyan">
+      <span
+        className="mt-0.5 flex size-4 shrink-0 items-center justify-center border border-jborder/60"
+        style={{ color: indicatorAccent(item.type) }}
+      >
         <Icon className="size-2.5" />
       </span>
       <span className="min-w-0 flex-1">
@@ -74,13 +70,19 @@ function EvidenceRow({
             {item.value}
           </span>
           <span
-            className={cn(
-              "flex shrink-0 items-center gap-1 font-mono text-[8px] uppercase tracking-wider",
-              HASH_TEXT_COLOR[item.hashStatus],
-            )}
+            className="flex shrink-0 items-center gap-1 font-mono text-[8px] uppercase tracking-wider"
+            style={{
+              color: statusDot("integrity", integrityKey(item.hashStatus)),
+            }}
           >
             <span
-              className={cn("size-1", HASH_DOT[item.hashStatus])}
+              className="size-1"
+              style={{
+                background: statusDot(
+                  "integrity",
+                  integrityKey(item.hashStatus),
+                ),
+              }}
               aria-hidden
             />
             {HASH_TEXT[item.hashStatus]}
@@ -97,13 +99,10 @@ function EvidenceRow({
           <span>· {formatClock(item.extractedAt)}</span>
           {item.reviewStatus && (
             <span
-              className={cn(
-                "border px-1 py-px",
-                item.reviewStatus === "confirmed"
-                  ? "border-jgreen/50 text-jgreen"
-                  : item.reviewStatus === "incorrect"
-                    ? "border-jred/50 text-jred"
-                    : "border-jamber/50 text-jamber",
+              className="border px-1 py-px"
+              style={statusStyle(
+                "review",
+                reviewKey(item.reviewStatus) ?? "needsreview",
               )}
             >
               {item.reviewStatus === "needs_review"

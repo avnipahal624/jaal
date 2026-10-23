@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { statusStyle } from "@/theme/status";
 import type {
   CaseRunStatus,
   InvestigationStatus,
@@ -6,7 +7,9 @@ import type {
   StageStatus,
 } from "@/types/investigation";
 import type { HashStatus } from "@/types/evidence";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+type StatusStyle = CSSProperties;
 
 /** Bordered investigation panel with HUD corner brackets and a mono label. */
 export function Panel({
@@ -48,30 +51,34 @@ export const STAGE_TONE: Record<KillChainStageId, string> = {
   exploit: "text-jred",
 };
 
-export const STAGE_STATUS_TONE: Record<StageStatus, string> = {
-  pending: "border-jborder/60 text-jmuted/60",
-  active: "border-jamber/60 bg-jamber/10 text-jamber",
-  detected: "border-jcyan/60 bg-jcyan/10 text-jcyan",
-  completed: "border-jteal/50 bg-jteal/10 text-jteal",
+/* Status chip styles — all colors come from the shared status config
+ * (src/theme/status.ts) via CSS variables, applied as inline styles so they
+ * work without Tailwind seeing runtime-composed class names. */
+
+export const STAGE_STATUS_STYLE: Record<StageStatus, StatusStyle> = {
+  pending: statusStyle("stage", "pending"),
+  active: statusStyle("stage", "active"),
+  detected: statusStyle("stage", "detected"),
+  completed: statusStyle("stage", "completed"),
 };
 
-export const INVESTIGATION_STATUS_TONE: Record<InvestigationStatus, string> = {
-  active: "border-jcyan/50 bg-jcyan/10 text-jcyan",
-  completed: "border-jgreen/50 bg-jgreen/10 text-jgreen",
-  archived: "border-jborder/70 bg-jsurface text-jmuted",
+export const INVESTIGATION_STATUS_STYLE: Record<InvestigationStatus, StatusStyle> = {
+  active: statusStyle("inv", "active"),
+  completed: statusStyle("inv", "completed"),
+  archived: statusStyle("inv", "archived"),
 };
 
-export const RUN_STATUS_TONE: Record<CaseRunStatus, string> = {
-  running: "border-jcyan/50 bg-jcyan/10 text-jcyan",
-  paused: "border-jamber/50 bg-jamber/10 text-jamber",
-  completed: "border-jgreen/50 bg-jgreen/10 text-jgreen",
+export const RUN_STATUS_STYLE: Record<CaseRunStatus, StatusStyle> = {
+  running: statusStyle("run", "active"),
+  paused: statusStyle("run", "paused"),
+  completed: statusStyle("run", "completed"),
 };
 
-export const HASH_TONE: Record<HashStatus, string> = {
-  none: "border-jborder/70 bg-jsurface text-jmuted",
-  generated: "border-jcyan/50 bg-jcyan/10 text-jcyan",
-  verified: "border-jgreen/50 bg-jgreen/10 text-jgreen",
-  mismatch: "border-jred/50 bg-jred/10 text-jred",
+export const HASH_STYLE: Record<HashStatus, StatusStyle> = {
+  none: statusStyle("integrity", "nothashed"),
+  generated: statusStyle("integrity", "generated"),
+  verified: statusStyle("integrity", "verified"),
+  mismatch: statusStyle("integrity", "mismatch"),
 };
 
 export const HASH_LABEL: Record<HashStatus, string> = {
@@ -83,11 +90,15 @@ export const HASH_LABEL: Record<HashStatus, string> = {
 
 export function Chip({
   tone,
+  style,
   children,
   className,
   pulse,
 }: {
-  tone: string;
+  /** Tailwind tone classes (plain chips only — status colors use `style`). */
+  tone?: string;
+  /** Inline styles from the shared status config (statusStyle/paperStyle). */
+  style?: CSSProperties;
   children: ReactNode;
   className?: string;
   pulse?: boolean;
@@ -99,6 +110,7 @@ export function Chip({
         tone,
         className,
       )}
+      style={style}
     >
       {pulse && <span className="size-1.5 shrink-0 bg-current jaal-pulse" />}
       {children}

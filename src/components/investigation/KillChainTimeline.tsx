@@ -5,7 +5,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Chip, STAGE_STATUS_TONE } from "@/components/ui/panel";
+import { Chip, STAGE_STATUS_STYLE } from "@/components/ui/panel";
+import { statusTextColor } from "@/theme/status";
 import { TACTIC_META } from "@/services/investigationService";
 import { cn } from "@/lib/utils";
 import type {
@@ -97,7 +98,7 @@ export function KillChainTimeline({
                       isActive
                         ? "border-jamber/70 text-jamber"
                         : isDone
-                          ? "border-jteal/60 text-jteal"
+                          ? "border-jgreen/60 text-jgreen"
                           : "border-jborder text-jmuted/60",
                     )}
                   >
@@ -123,10 +124,8 @@ export function KillChainTimeline({
                     {stage.label}
                   </span>
                   <span
-                    className={cn(
-                      "font-mono text-[7px] uppercase tracking-wider",
-                      STAGE_STATUS_TONE[stage.status].split(" ").pop(),
-                    )}
+                    className="font-mono text-[7px] uppercase tracking-wider"
+                    style={statusTextColor("stage", stage.status)}
                   >
                     {stage.status}
                   </span>
@@ -196,10 +195,8 @@ export function KillChainTimeline({
                     </span>
                   </span>
                   <span
-                    className={cn(
-                      "shrink-0 font-mono text-[8px] uppercase tracking-wider",
-                      STAGE_STATUS_TONE[stage.status].split(" ").pop(),
-                    )}
+                    className="shrink-0 font-mono text-[8px] uppercase tracking-wider"
+                    style={statusTextColor("stage", stage.status)}
                   >
                     {stage.status}
                   </span>
@@ -221,7 +218,7 @@ export function KillChainTimeline({
                 <DialogTitle className="flex flex-wrap items-center gap-2 text-jtext">
                   <span className="font-mono text-jcyan">0{openStage.number}</span>
                   {openStage.label}
-                  <Chip tone={STAGE_STATUS_TONE[openStage.status]}>
+                  <Chip style={STAGE_STATUS_STYLE[openStage.status]}>
                     {openStage.status}
                   </Chip>
                 </DialogTitle>

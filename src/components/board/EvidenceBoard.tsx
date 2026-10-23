@@ -51,6 +51,13 @@ import {
   type BoardSelection,
   type EdgeIndex,
 } from "./boardLayout";
+import {
+  indicatorAccent,
+  integrityKey,
+  reviewKey,
+  statusDot,
+  statusStyle,
+} from "@/theme/status";
 
 export type { BoardSelection } from "./boardLayout";
 
@@ -67,22 +74,20 @@ export type { BoardSelection } from "./boardLayout";
  * drawer; click an edge to read its relationship basis and source record.
  */
 
-// Integrity status (Convex row) → presentation.
-const INTEGRITY_TONE: Record<
-  string,
-  { dot: string; label: string; text: string }
-> = {
-  NOT_HASHED: { dot: "bg-jmuted/50", label: "unhashed", text: "text-jmuted" },
-  HASH_GENERATED: { dot: "bg-jcyan", label: "hashed", text: "text-jcyan" },
-  INTEGRITY_VERIFIED: { dot: "bg-jgreen", label: "verified", text: "text-jgreen" },
-  HASH_MISMATCH: { dot: "bg-jred", label: "mismatch", text: "text-jred" },
+// Integrity status → label; colors come from the shared status map.
+const INTEGRITY_LABEL: Record<string, string> = {
+  NOT_HASHED: "unhashed",
+  HASH_GENERATED: "hashed",
+  INTEGRITY_VERIFIED: "verified",
+  HASH_MISMATCH: "mismatch",
 };
 
-const REVIEW_TONE: Record<string, string> = {
-  confirmed: "bg-jgreen",
-  incorrect: "bg-jred",
-  needs_review: "bg-jamber",
-};
+const integrityColor = (status: string) =>
+  statusDot("integrity", integrityKey(status));
+const integrityLabel = (status: string) =>
+  INTEGRITY_LABEL[status] ?? INTEGRITY_LABEL["NOT_HASHED"]!;
+const reviewDot = (status: string) =>
+  statusDot("review", reviewKey(status) ?? "needsreview");
 
 const EDGE_TONE: Record<
   string,
@@ -681,6 +686,7 @@ function GraphCanvas({
               const Icon =
                 EVIDENCE_ICON[data.evidenceType as EvidenceItem["type"]] ??
                 Fingerprint;
+              const accent = indicatorAccent(data.evidenceType);
               return (
                 <div
                   key={node.id}
@@ -698,8 +704,14 @@ function GraphCanvas({
                 >
                   <div className="flex items-center justify-between gap-1">
                     <span className="flex min-w-0 items-center gap-1">
-                      <Icon className="size-3 shrink-0 text-jteal" />
-                      <span className="truncate font-mono text-[8px] uppercase tracking-widest text-jteal">
+                      <Icon
+                        className="size-3 shrink-0"
+                        style={{ color: accent }}
+                      />
+                      <span
+                        className="truncate font-mono text-[8px] uppercase tracking-widest"
+                        style={{ color: accent }}
+                      >
                         {record.label}
                       </span>
                     </span>
@@ -721,13 +733,10 @@ function GraphCanvas({
 
             // evidence — the preserved, hash-tracked artifact
             const data = record.data as GraphEvidenceData;
-            const integrity =
-              INTEGRITY_TONE[data.integrity.status] ??
-              INTEGRITY_TONE["NOT_HASHED"]!;
             return (
               <div
                 key={node.id}
-                title={`${data.label} — integrity ${integrity.label}`}
+                title={`${data.label} — integrity ${integrityLabel(data.integrity.status)}`}
                 onPointerDown={(e) => handlePointerDown(e, node)}
                 onPointerMove={handlePointerMove}
                 onPointerUp={(e) => handlePointerUp(e, node)}
@@ -753,12 +762,10 @@ function GraphCanvas({
                   {data.value}
                 </p>
                 <p
-                  className={cn(
-                    "mt-0.5 font-mono text-[7.5px] uppercase tracking-widest",
-                    integrity.text,
-                  )}
+                  className="mt-0.5 font-mono text-[7.5px] uppercase tracking-widest"
+                  style={{ color: integrityColor(data.integrity.status) }}
                 >
-                  sha-256 · {integrity.label}
+                  sha-256 · {integrityLabel(data.integrity.status)}
                 </p>
               </div>
             );
@@ -794,72 +801,59 @@ function NodeStatusTags({
   node: GraphNode;
   preserved: GraphNode | null;
 }) {
-  if (node.type === "evidence") {
-    const d = node.data as GraphEvidenceData;
+  if (node.type === "evidence" || (node.type === "indicator" && preserved)) {
+    const d =
+      node.type === "evidence"
+        ? (node.data as GraphEvidenceData)
+        : ((preserved!.data as GraphEvidenceData));
     return (
       <span className="flex items-center gap-1.5">
-        <IntegrityTag status={d.integrity.status} />
-        <ReviewTag status={d.review.status} />
+        <span
+          className="flex items-center gap-1"
+          style={{ color: integrityColor(d.integrity.status) }}
+        >
+          <span
+            className="size-1.5"
+            style={{ background: integrityColor(d.integrity.status) }}
+          />
+          {integrityLabel(d.integrity.status)}
+        </span>
+        {d.review.status && (
+          <span
+            className="border border-jborder/60 px-1 py-px"
+            style={statusStyle(
+              "review",
+              reviewKey(d.review.status) ?? "needsreview",
+            )}
+          >
+            {d.review.status === "needs_review" ? "review" : d.review.status}
+          </span>
+        )}
       </span>
     );
   }
   if (node.type === "indicator") {
-    if (!preserved) return <span className="text-jmuted/60">—</span>;
-    const d = preserved.data as GraphEvidenceData;
-    return (
-      <span className="flex items-center gap-1.5">
-        <IntegrityTag status={d.integrity.status} />
-        <ReviewTag status={d.review.status} />
-      </span>
-    );
+    return <span className="text-jmuted/60">—</span>;
   }
   return null;
-}
-
-function IntegrityTag({ status }: { status: string }) {
-  const tone = INTEGRITY_TONE[status] ?? INTEGRITY_TONE["NOT_HASHED"]!;
-  return (
-    <span className={cn("flex items-center gap-1", tone.text)}>
-      <span className={cn("size-1.5", tone.dot)} />
-      {tone.label}
-    </span>
-  );
-}
-
-function ReviewTag({ status }: { status: string | null }) {
-  if (!status) return null;
-  return (
-    <span
-      className={cn(
-        "border border-jborder/60 px-1 py-px",
-        status === "confirmed"
-          ? "text-jgreen"
-          : status === "incorrect"
-            ? "text-jred"
-            : "text-jamber",
-      )}
-    >
-      {status === "needs_review" ? "review" : status}
-    </span>
-  );
 }
 
 /** Compact integrity + review dots for board cards. */
 function NodeStatusDots({ data }: { data: GraphEvidenceData | null }) {
   if (!data) return null;
-  const integrity =
-    INTEGRITY_TONE[data.integrity.status] ?? INTEGRITY_TONE["NOT_HASHED"]!;
   return (
     <span className="flex shrink-0 items-center gap-1">
       {data.review.status && (
         <span
           title={`analyst: ${data.review.status.replace("_", " ")}`}
-          className={cn("size-1.5", REVIEW_TONE[data.review.status])}
+          className="size-1.5"
+          style={{ background: reviewDot(data.review.status) }}
         />
       )}
       <span
-        title={`integrity: ${integrity.label}`}
-        className={cn("size-1.5", integrity.dot)}
+        title={`integrity: ${integrityLabel(data.integrity.status)}`}
+        className="size-1.5"
+        style={{ background: integrityColor(data.integrity.status) }}
       />
     </span>
   );

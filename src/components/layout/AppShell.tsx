@@ -1,5 +1,6 @@
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useJaal } from "@/state/JaalProvider";
+import { STATUS_COLOR_CSS } from "@/theme/status";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Outlet } from "react-router";import { SidebarContent } from "./Sidebar";
@@ -23,6 +24,8 @@ export function AppShell() {
       data-anim={appearance.reducedMotion ? "off" : "on"}
       className="jaal-grid flex min-h-screen bg-background text-foreground"
     >
+      {/* Single source of truth for status colors (see src/theme/status.ts) */}
+      <style>{STATUS_COLOR_CSS}</style>
       {/* Desktop sidebar / icon rail */}
       <aside
         className={cn(

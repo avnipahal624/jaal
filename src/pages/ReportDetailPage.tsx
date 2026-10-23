@@ -1,5 +1,12 @@
 import { useJaal } from "@/state/JaalProvider";
 import { exportReportJson, printReport } from "@/services/reportService";
+import {
+  indicatorAccent,
+  integrityKey,
+  invKey,
+  paperStyle,
+  reviewKey,
+} from "@/theme/status";
 import { formatDateTime, formatTime } from "@/utils/formatters";
 import { shortHash } from "@/utils/hash";
 import { motion } from "framer-motion";
@@ -16,46 +23,43 @@ import { Link, useParams } from "react-router";
  * background graphics disabled.
  */
 
-const STATUS_STAMP: Record<string, string> = {
-  active: "df-stamp df-stamp-navy",
-  completed: "df-stamp df-stamp-teal",
-  archived: "df-stamp",
+const STATUS_LABEL: Record<string, string> = {
+  active: "Active",
+  completed: "Completed",
+  archived: "Archived",
 };
 
-/** Hash lifecycle → ink stamp (text always present; color is secondary). */
-const INTEGRITY_STAMP: Record<
-  string,
-  { cls: string; label: string }
-> = {
-  INTEGRITY_VERIFIED: { cls: "df-stamp df-stamp-sm df-stamp-teal", label: "Verified" },
-  HASH_MISMATCH: { cls: "df-stamp df-stamp-sm df-stamp-rust", label: "Hash mismatch" },
-  HASH_GENERATED: { cls: "df-stamp df-stamp-sm", label: "Hash on file" },
-  NOT_HASHED: { cls: "df-stamp df-stamp-sm", label: "Unhashed" },
+/** Hash lifecycle → stamp (text always present; color from the shared map). */
+const INTEGRITY_LABEL: Record<string, string> = {
+  INTEGRITY_VERIFIED: "Verified",
+  HASH_MISMATCH: "Hash mismatch",
+  HASH_GENERATED: "Hash on file",
+  NOT_HASHED: "Unhashed",
   // Frontend-normalized aliases (older stored reports)
-  verified: { cls: "df-stamp df-stamp-sm df-stamp-teal", label: "Verified" },
-  mismatch: { cls: "df-stamp df-stamp-sm df-stamp-rust", label: "Hash mismatch" },
-  generated: { cls: "df-stamp df-stamp-sm", label: "Hash on file" },
-  none: { cls: "df-stamp df-stamp-sm", label: "Unhashed" },
+  verified: "Verified",
+  mismatch: "Hash mismatch",
+  generated: "Hash on file",
+  none: "Unhashed",
 };
 
-const VERDICT_STAMP: Record<string, { cls: string; label: string }> = {
-  confirmed: { cls: "df-stamp df-stamp-sm df-stamp-teal", label: "Confirmed" },
-  incorrect: { cls: "df-stamp df-stamp-sm df-stamp-rust", label: "Incorrect" },
-  needs_review: { cls: "df-stamp df-stamp-sm df-stamp-amber", label: "Needs review" },
+const VERDICT_LABEL: Record<string, string> = {
+  confirmed: "Confirmed",
+  incorrect: "Incorrect",
+  needs_review: "Needs review",
 };
 
 function Stamp({
-  map,
-  value,
+  style,
+  label,
+  small = true,
 }: {
-  map: Record<string, { cls: string; label: string }>;
-  value: string;
+  style: { color: string; borderColor: string };
+  label: string;
+  small?: boolean;
 }) {
-  const s = map[value];
-  if (!s) return null;
   return (
-    <span className={s.cls}>
-      {s.label}
+    <span className={`df-stamp${small ? " df-stamp-sm" : ""}`} style={style}>
+      {label}
     </span>
   );
 }
@@ -194,15 +198,17 @@ export default function ReportDetailPage() {
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
             <p className="df-caseno">CASE NO. {report.caseId}</p>
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={
-                  STATUS_STAMP[report.status] ?? "df-stamp"
-                }
-              >
-                {report.status}
-              </span>
+              <Stamp
+                small={false}
+                style={paperStyle("inv", invKey(report.status))}
+                label={STATUS_LABEL[report.status] ?? report.status}
+              />
               {report.simulated && (
-                <span className="df-stamp df-stamp-amber">Simulated</span>
+                <Stamp
+                  small={false}
+                  style={paperStyle("engine", "simulation")}
+                  label="Simulated"
+                />
               )}
             </div>
           </div>
@@ -240,13 +246,25 @@ export default function ReportDetailPage() {
                       extracted {formatDateTime(exhibitEvidence.extractedAt)}
                     </span>
                     <Stamp
-                      map={INTEGRITY_STAMP}
-                      value={exhibitEvidence.hashStatus}
+                      style={paperStyle(
+                        "integrity",
+                        integrityKey(exhibitEvidence.hashStatus),
+                      )}
+                      label={
+                        INTEGRITY_LABEL[exhibitEvidence.hashStatus] ??
+                        exhibitEvidence.hashStatus
+                      }
                     />
                     {exhibitEvidence.review?.status && (
                       <Stamp
-                        map={VERDICT_STAMP}
-                        value={exhibitEvidence.review.status}
+                        style={paperStyle(
+                          "review",
+                          reviewKey(exhibitEvidence.review.status)!,
+                        )}
+                        label={
+                          VERDICT_LABEL[exhibitEvidence.review.status] ??
+                          exhibitEvidence.review.status
+                        }
                       />
                     )}
                   </div>
@@ -510,16 +528,39 @@ export default function ReportDetailPage() {
               <p className="text-[13px]">No identifiers extracted.</p>
             ) : (
               report.evidence.map((e, i) => (
-                <div key={e.id} className="df-evidence">
+                <div
+                  key={e.id}
+                  className="df-evidence"
+                  style={{
+                    borderLeft: `3px solid ${indicatorAccent(e.type)}`,
+                    paddingLeft: 12,
+                  }}
+                >
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <p>
                       <span className="df-evnum">{evRef(i)}</span>
                       <span className="df-kicker ml-3">{e.label}</span>
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Stamp map={INTEGRITY_STAMP} value={e.hashStatus} />
+                      <Stamp
+                        style={paperStyle(
+                          "integrity",
+                          integrityKey(e.hashStatus),
+                        )}
+                        label={
+                          INTEGRITY_LABEL[e.hashStatus] ?? e.hashStatus
+                        }
+                      />
                       {e.review?.status && (
-                        <Stamp map={VERDICT_STAMP} value={e.review.status} />
+                        <Stamp
+                          style={paperStyle(
+                            "review",
+                            reviewKey(e.review.status)!,
+                          )}
+                          label={
+                            VERDICT_LABEL[e.review.status] ?? e.review.status
+                          }
+                        />
                       )}
                     </div>
                   </div>
@@ -594,12 +635,21 @@ export default function ReportDetailPage() {
               {[
                 ["Collected", report.integrity.collected, ""],
                 ["Hash on file", report.integrity.hashed, ""],
-                ["Verified", report.integrity.verified, "df-good"],
-                ["Mismatch", report.integrity.mismatched, "df-alert"],
+                ["Verified", report.integrity.verified, "verified"],
+                ["Mismatch", report.integrity.mismatched, "mismatch"],
                 ["Unhashed", report.integrity.unhashed, ""],
               ].map(([k, v, tone]) => (
                 <div key={k as string} className="df-count">
-                  <p className={`df-count-num ${tone as string}`}>{v}</p>
+                  <p
+                    className="df-count-num"
+                    style={
+                      tone
+                        ? paperStyle("integrity", tone as string)
+                        : undefined
+                    }
+                  >
+                    {v}
+                  </p>
                   <p className="df-count-label">{k}</p>
                 </div>
               ))}
@@ -615,7 +665,10 @@ export default function ReportDetailPage() {
                 <li key={v.id} className="df-item !py-2">
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="df-evnum">{evRef(i)}</span>
-                    <Stamp map={INTEGRITY_STAMP} value={v.status} />
+                    <Stamp
+                      style={paperStyle("integrity", integrityKey(v.status))}
+                      label={INTEGRITY_LABEL[v.status] ?? v.status}
+                    />
                     <span className="df-mono text-[11px]">{v.label}</span>
                     <span className="text-[11.5px] text-[color:var(--ink-soft)]">
                       {v.note}
@@ -636,8 +689,14 @@ export default function ReportDetailPage() {
                       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                         <span className="df-evnum">{num}</span>
                         <Stamp
-                          map={VERDICT_STAMP}
-                          value={row.review!.status!}
+                          style={paperStyle(
+                            "review",
+                            reviewKey(row.review!.status!)!,
+                          )}
+                          label={
+                            VERDICT_LABEL[row.review!.status!] ??
+                            row.review!.status!
+                          }
                         />
                         <span className="df-mono text-[11px]">{row.value}</span>
                         {row.review!.note && (

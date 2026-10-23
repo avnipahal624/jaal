@@ -1,7 +1,14 @@
-import { Chip, HASH_LABEL, HASH_TONE } from "@/components/ui/panel";
+import { Chip, HASH_LABEL, HASH_STYLE } from "@/components/ui/panel";
 import { copyToClipboard } from "@/utils/export";
 import { shortHash } from "@/utils/hash";
 import { cn } from "@/lib/utils";
+import {
+  indicatorAccent,
+  integrityKey,
+  reviewKey,
+  statusDot,
+  statusStyle,
+} from "@/theme/status";
 import type { EvidenceItem } from "@/types/evidence";
 import { formatClock } from "@/utils/formatters";
 import {
@@ -32,12 +39,9 @@ export const EVIDENCE_ICON: Record<EvidenceItem["type"], LucideIcon> = {
   other: Fingerprint,
 };
 
-const HASH_DOT: Record<EvidenceItem["hashStatus"], string> = {
-  none: "bg-jmuted/50",
-  generated: "bg-jcyan",
-  verified: "bg-jgreen",
-  mismatch: "bg-jred",
-};
+const dotStyle = (hashStatus: EvidenceItem["hashStatus"]) => ({
+  background: statusDot("integrity", integrityKey(hashStatus)),
+});
 
 export function EvidenceCard({
   item,
@@ -73,11 +77,17 @@ export function EvidenceCard({
         onClick={onOpen}
         className="flex w-full items-start gap-2 border border-jborder/60 bg-jsurface/70 px-2.5 py-2 text-left transition-colors hover:border-jcyan/50"
       >
-        <Icon className="mt-0.5 size-3.5 shrink-0 text-jcyan" />
+        <Icon
+          className="mt-0.5 size-3.5 shrink-0"
+          style={{ color: indicatorAccent(item.type) }}
+        />
         <span className="min-w-0 flex-1">
           <span className="flex items-center justify-between gap-2">
             <span className="jaal-label !text-[9px]">{item.label}</span>
-            <span className={cn("size-1.5 shrink-0 rounded-full", HASH_DOT[item.hashStatus])} />
+            <span
+              className="size-1.5 shrink-0 rounded-full"
+              style={dotStyle(item.hashStatus)}
+            />
           </span>
           <span className="mt-0.5 block truncate font-mono text-[11px] text-jtext">
             {item.value}
@@ -94,7 +104,10 @@ export function EvidenceCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="flex size-6 shrink-0 items-center justify-center border border-jcyan/40 bg-jcyan/10 text-jcyan">
+          <span
+            className="flex size-6 shrink-0 items-center justify-center border border-jborder/60 bg-jsurface"
+            style={{ color: indicatorAccent(item.type) }}
+          >
             <Icon className="size-3.5" />
           </span>
           <div className="min-w-0">
@@ -122,16 +135,15 @@ export function EvidenceCard({
       </p>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <Chip tone={HASH_TONE[item.hashStatus]}>{HASH_LABEL[item.hashStatus]}</Chip>
+        <Chip style={HASH_STYLE[item.hashStatus]}>
+          {HASH_LABEL[item.hashStatus]}
+        </Chip>
         {item.reviewStatus && (
           <Chip
-            tone={
-              item.reviewStatus === "confirmed"
-                ? "border-jgreen/50 bg-jgreen/10 text-jgreen"
-                : item.reviewStatus === "incorrect"
-                  ? "border-jred/50 bg-jred/10 text-jred"
-                  : "border-jamber/50 bg-jamber/10 text-jamber"
-            }
+            style={statusStyle(
+              "review",
+              reviewKey(item.reviewStatus) ?? "needsreview",
+            )}
           >
             {item.reviewStatus === "needs_review"
               ? "needs review"

@@ -7,7 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Chip, HASH_LABEL, HASH_TONE } from "@/components/ui/panel";
+import { Chip, HASH_LABEL, HASH_STYLE } from "@/components/ui/panel";
 import { EVIDENCE_ICON } from "./EvidenceCard";
 import { useJaal } from "@/state/JaalProvider";
 import type { EvidenceItem } from "@/types/evidence";
@@ -16,6 +16,7 @@ import { copyToClipboard } from "@/utils/export";
 import { shortHash } from "@/utils/hash";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { integrityKey, reviewKey, statusStyle } from "@/theme/status";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -121,7 +122,7 @@ export function EvidenceDrawer({
               <Icon className="size-4" />
             </span>
             Evidence detail
-            <Chip tone={HASH_TONE[item.hashStatus]} className="ml-auto">
+            <Chip style={HASH_STYLE[item.hashStatus]} className="ml-auto">
               {HASH_LABEL[item.hashStatus]}
             </Chip>
           </SheetTitle>
@@ -180,15 +181,8 @@ export function EvidenceDrawer({
               <p className="jaal-label">Integrity (SHA-256 · Web Crypto)</p>
               <Badge
                 variant="outline"
-                className={`border-0 font-mono text-[9px] uppercase tracking-widest ${
-                  item.hashStatus === "verified"
-                    ? "bg-jgreen/15 text-jgreen"
-                    : item.hashStatus === "mismatch"
-                      ? "bg-jred/15 text-jred"
-                      : item.hashStatus === "generated"
-                        ? "bg-jcyan/15 text-jcyan"
-                        : "bg-jsurface text-jmuted"
-                }`}
+                className="border font-mono text-[9px] uppercase tracking-widest"
+                style={statusStyle("integrity", integrityKey(item.hashStatus))}
               >
                 {HASH_LABEL[item.hashStatus]}
               </Badge>
@@ -370,24 +364,22 @@ export function EvidenceDrawer({
                     status: "confirmed" as const,
                     label: "Confirmed",
                     Icon: CheckCircle2,
-                    tone:
-                      "border-jgreen/50 bg-jgreen/10 text-jgreen hover:bg-jgreen/20",
+                    style: statusStyle("review", "confirmed"),
                   },
                   {
                     status: "incorrect" as const,
                     label: "Incorrect",
                     Icon: XCircle,
-                    tone: "border-jred/50 bg-jred/10 text-jred hover:bg-jred/20",
+                    style: statusStyle("review", "incorrect"),
                   },
                   {
                     status: "needs_review" as const,
                     label: "Needs review",
                     Icon: AlertTriangle,
-                    tone:
-                      "border-jamber/50 bg-jamber/10 text-jamber hover:bg-jamber/20",
+                    style: statusStyle("review", "needsreview"),
                   },
                 ]
-              ).map(({ status, label, Icon, tone }) => {
+              ).map(({ status, label, Icon, style }) => {
                 const active = item.reviewStatus === status;
                 return (
                   <button
@@ -399,9 +391,9 @@ export function EvidenceDrawer({
                         duration: 1600,
                       });
                     }}
+                    style={style}
                     className={cn(
-                      "flex items-center gap-1.5 border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-colors",
-                      tone,
+                      "flex items-center gap-1.5 border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider transition-[filter,box-shadow] hover:brightness-125",
                       active && "ring-1 ring-current",
                     )}
                   >

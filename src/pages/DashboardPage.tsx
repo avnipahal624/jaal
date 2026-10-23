@@ -1,6 +1,6 @@
 import { ActivityFeed, useAllActivities } from "@/components/dashboard/ActivityFeed";
 import { InvestigationCard } from "@/components/dashboard/InvestigationCard";
-import { Chip, Panel, STAGE_STATUS_TONE } from "@/components/ui/panel";
+import { Chip, Panel, STAGE_STATUS_STYLE } from "@/components/ui/panel";
 import { useJaal } from "@/state/JaalProvider";
 import { STAGE_LABELS } from "@/services/investigationService";
 import { cn } from "@/lib/utils";
@@ -157,7 +157,7 @@ export default function DashboardPage() {
                     </span>
                     {activeStage && (
                       <Chip
-                        tone={STAGE_STATUS_TONE[activeStage.status]}
+                        style={STAGE_STATUS_STYLE[activeStage.status]}
                         className="ml-1.5 !px-1.5 !text-[8px]"
                       >
                         {activeStage.status}

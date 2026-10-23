@@ -1,4 +1,8 @@
-import { Chip, INVESTIGATION_STATUS_TONE, STAGE_TONE } from "@/components/ui/panel";
+import {
+  Chip,
+  INVESTIGATION_STATUS_STYLE,
+  STAGE_TONE,
+} from "@/components/ui/panel";
 import { Button } from "@/components/ui/button";
 import { STAGE_LABELS } from "@/services/investigationService";
 import type { Investigation } from "@/types/investigation";
@@ -37,7 +41,7 @@ export function InvestigationCard({
             {investigation.title}
           </h3>
         </div>
-        <Chip tone={INVESTIGATION_STATUS_TONE[investigation.status]}>
+        <Chip style={INVESTIGATION_STATUS_STYLE[investigation.status]}>
           {investigation.status}
         </Chip>
       </div>

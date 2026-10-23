@@ -1,4 +1,4 @@
-import { Chip, HASH_TONE, STAGE_STATUS_TONE } from "@/components/ui/panel";
+import { Chip, HASH_STYLE, STAGE_STATUS_STYLE } from "@/components/ui/panel";
 import { useInvestigation } from "@/hooks/useInvestigation";
 import { useJaal } from "@/state/JaalProvider";
 import { TACTIC_META } from "@/services/investigationService";
@@ -215,7 +215,7 @@ export default function InvestigationCompletePage() {
                       {stage.label}
                     </span>
                     <Chip
-                      tone={STAGE_STATUS_TONE[stage.status]}
+                      style={STAGE_STATUS_STYLE[stage.status]}
                       className="ml-auto !px-1.5 !text-[8px]"
                     >
                       {stage.status}
@@ -303,7 +303,7 @@ export default function InvestigationCompletePage() {
                 <span className="truncate font-mono text-[10px] text-jtext/85">
                   {e.label}: {e.value}
                 </span>
-                <Chip tone={HASH_TONE[e.hashStatus]} className="!px-1.5 !text-[8px]">
+                <Chip style={HASH_STYLE[e.hashStatus]} className="!px-1.5 !text-[8px]">
                   {e.hashStatus}
                 </Chip>
               </div>

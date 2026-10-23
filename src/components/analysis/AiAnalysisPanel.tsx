@@ -6,6 +6,7 @@ import {
   STAGE_TACTIC_HINT,
 } from "@/services/strategyService";
 import { cn } from "@/lib/utils";
+import { statusDot } from "@/theme/status";
 import type { CaseRuntime } from "@/types/investigation";
 import { formatClock } from "@/utils/formatters";
 import { Brain } from "lucide-react";
@@ -147,8 +148,22 @@ export function AiAnalysisPanel({ runtime }: { runtime: CaseRuntime }) {
         ))}
       </div>
 
-      <p className="font-mono text-[8px] uppercase tracking-widest text-jmuted/50">
-        local analysis engine · simulation mode — no external model or service
+      {/* Engine mode — CLAUDE only when the strategy came from a real, validated
+          provider response; every rules-engine path (including provider
+          errors) reads SIMULATION. */}
+      <p className="flex items-center gap-1.5 font-mono text-[8px] uppercase tracking-widest text-jmuted/70">
+        <span
+          className="size-1.5 shrink-0"
+          style={{
+            background: statusDot(
+              "engine",
+              runtime.strategy?.source === "ANTHROPIC" ? "claude" : "simulation",
+            ),
+          }}
+        />
+        {runtime.strategy?.source === "ANTHROPIC"
+          ? "convex action · anthropic claude"
+          : "local rules engine · simulation mode"}
       </p>
     </div>
   );

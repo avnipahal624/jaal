@@ -1,4 +1,5 @@
-import { Chip, RUN_STATUS_TONE, STAGE_STATUS_TONE } from "@/components/ui/panel";
+import { Chip, RUN_STATUS_STYLE, STAGE_STATUS_STYLE } from "@/components/ui/panel";
+import { statusStyle } from "@/theme/status";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -86,15 +87,21 @@ export function WorkspaceHeader({
                 {investigation.category}
               </span>
               {runtime.strategy?.source === "ANTHROPIC" ? (
-                <span className="flex items-center gap-1 border border-jgreen/40 bg-jgreen/10 px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-jgreen">
-                  <Radio className="size-2.5" /> anthropic claude
+                <span
+                  className="flex items-center gap-1 border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider"
+                  style={statusStyle("engine", "claude")}
+                >
+                  <Radio className="size-2.5" /> claude / live ai
                 </span>
               ) : (
-                <span className="flex items-center gap-1 border border-jcyan/40 bg-jcyan/10 px-1.5 py-px font-mono text-[9px] uppercase tracking-wider text-jcyan">
-                  <Radio className="size-2.5" /> simulation mode
+                <span
+                  className="flex items-center gap-1 border px-1.5 py-px font-mono text-[9px] uppercase tracking-wider"
+                  style={statusStyle("engine", "simulation")}
+                >
+                  <Radio className="size-2.5" /> simulation
                 </span>
               )}
-              <Chip tone={RUN_STATUS_TONE[status]} pulse={status === "running"}>
+              <Chip style={RUN_STATUS_STYLE[status]} pulse={status === "running"}>
                 {status === "running" ? "live" : status}
               </Chip>
             </div>
@@ -112,7 +119,10 @@ export function WorkspaceHeader({
               {activeStage ? activeStage.label : STAGE_LABELS[investigation.currentStage]}
             </span>
             {activeStage && (
-              <Chip tone={STAGE_STATUS_TONE[activeStage.status]} className="!px-1.5 !text-[8px]">
+              <Chip
+                style={STAGE_STATUS_STYLE[activeStage.status]}
+                className="!px-1.5 !text-[8px]"
+              >
                 {activeStage.status}
               </Chip>
             )}

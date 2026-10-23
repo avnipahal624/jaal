@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import type { ActivityKind, LogLevel } from "@/types/investigation";
 import { copyToClipboard } from "@/utils/export";
 import { formatClock } from "@/utils/formatters";
+import { activityColor } from "@/theme/status";
 import {
   Activity,
   Brain,
@@ -48,18 +49,7 @@ const ACTIVITY_ICON: Record<ActivityKind, LucideIcon> = {
   evidence_reviewed: ClipboardCheck,
 };
 
-const ACTIVITY_COLOR: Record<ActivityKind, string> = {
-  case_started: "text-jcyan",
-  message: "text-jtext/80",
-  identifier_extracted: "text-jcyan",
-  tactic_detected: "text-jamber",
-  hash_generated: "text-jgreen",
-  stage_advanced: "text-jamber",
-  report_created: "text-jteal",
-  integrity_verified: "text-jgreen",
-  integrity_mismatch: "text-jred",
-  evidence_reviewed: "text-jteal",
-};
+
 
 /** Split log lines into analysis vs system streams. */
 function isAnalysisLog(message: string): boolean {
@@ -193,10 +183,8 @@ export function BottomConsole({
                 [{formatClock(latestEvent.timestamp)}]
               </span>
               <span
-                className={cn(
-                  "shrink-0",
-                  ACTIVITY_COLOR[latestEvent.kind] ?? "text-jtext/80",
-                )}
+                className="shrink-0"
+                style={{ color: activityColor(latestEvent.kind) }}
               >
                 {latestEvent.title}
               </span>
@@ -342,12 +330,10 @@ export function BottomConsole({
                         [{formatClock(e.timestamp)}]
                       </span>
                       <Icon
-                        className={cn(
-                          "mt-0.5 size-3 shrink-0",
-                          ACTIVITY_COLOR[e.kind] ?? "text-jmuted",
-                        )}
+                        className="mt-0.5 size-3 shrink-0"
+                        style={{ color: activityColor(e.kind) }}
                       />
-                      <span className={ACTIVITY_COLOR[e.kind] ?? "text-jtext/80"}>
+                      <span style={{ color: activityColor(e.kind) }}>
                         {e.title}
                       </span>
                       <span className="truncate text-jmuted">{e.detail}</span>

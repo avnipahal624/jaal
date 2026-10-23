@@ -433,31 +433,6 @@
   border: 1.5px solid currentColor;
   flex-shrink: 0;
 }
-.df-stamp-teal {
-  border-color: var(--teal);
-  color: var(--teal);
-}
-.df-stamp-teal::before {
-  background: var(--teal);
-}
-.df-stamp-amber {
-  border-color: var(--amber);
-  color: var(--amber);
-}
-.df-stamp-amber::before {
-  background: var(--amber);
-}
-.df-stamp-rust {
-  border-color: var(--rust);
-  color: var(--rust);
-}
-.df-stamp-rust::before {
-  background: var(--rust);
-}
-.df-stamp-navy {
-  border-color: var(--navy);
-  color: var(--navy);
-}
 .df-stamp-sm {
   font-size: 8.5px;
   padding: 1px 6px;
@@ -697,12 +672,6 @@
   line-height: 1;
   color: var(--navy);
 }
-.df-count-num.df-alert {
-  color: var(--rust);
-}
-.df-count-num.df-good {
-  color: var(--teal);
-}
 .df-count-label {
   margin-top: 4px;
   font-size: 10px;
@@ -760,6 +729,12 @@
   /* Grain costs toner and adds nothing on paper */
   .df-grain {
     display: none !important;
+  }
+
+  /* Print ink palette (status colors flip via --st-* in theme/status.ts) */
+  .df-sheet {
+    --ink: #142630;
+    --navy: #06131c;
   }
 
   .df-runfoot {

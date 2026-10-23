@@ -1,4 +1,5 @@
 import { Chip, Panel } from "@/components/ui/panel";
+import { activityColor } from "@/theme/status";
 import { KillChainTimeline } from "@/components/investigation/KillChainTimeline";
 import { cn } from "@/lib/utils";
 import type {
@@ -35,18 +36,7 @@ const ACTIVITY_ICON: Record<ActivityKind, LucideIcon> = {
   evidence_reviewed: ClipboardCheck,
 };
 
-const ACTIVITY_COLOR: Record<ActivityKind, string> = {
-  case_started: "text-jcyan",
-  message: "text-jtext/80",
-  identifier_extracted: "text-jcyan",
-  tactic_detected: "text-jamber",
-  hash_generated: "text-jgreen",
-  stage_advanced: "text-jamber",
-  report_created: "text-jteal",
-  integrity_verified: "text-jgreen",
-  integrity_mismatch: "text-jred",
-  evidence_reviewed: "text-jteal",
-};
+
 
 /** Compact stat row used by the clue summary. */
 function Stat({
@@ -221,10 +211,8 @@ export function CaseRail({
                     {formatClock(e.timestamp)}
                   </span>
                   <Icon
-                    className={cn(
-                      "mt-0.5 size-2.5 shrink-0",
-                      ACTIVITY_COLOR[e.kind] ?? "text-jmuted",
-                    )}
+                    className="mt-0.5 size-2.5 shrink-0"
+                    style={{ color: activityColor(e.kind) }}
                   />
                   <span className="min-w-0 flex-1 truncate text-jtext/80">
                     {e.title}
