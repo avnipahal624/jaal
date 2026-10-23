@@ -12,6 +12,7 @@ import {
   Activity,
   Brain,
   Check,
+  ClipboardCheck,
   Fingerprint,
   Flag,
   MessageSquare,
@@ -31,6 +32,7 @@ const ACTIVITY_ICON: Record<ActivityKind, LucideIcon> = {
   report_created: Check,
   integrity_verified: ShieldCheck,
   integrity_mismatch: ShieldAlert,
+  evidence_reviewed: ClipboardCheck,
 };
 
 const ACTIVITY_COLOR: Record<ActivityKind, string> = {
@@ -43,6 +45,7 @@ const ACTIVITY_COLOR: Record<ActivityKind, string> = {
   report_created: "text-jteal",
   integrity_verified: "text-jgreen",
   integrity_mismatch: "text-jred",
+  evidence_reviewed: "text-jteal",
 };
 
 /** Compact stat row used by the clue summary. */

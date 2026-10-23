@@ -830,6 +830,15 @@ export function reducer(state: JaalState, action: Action): JaalState {
               `Analyst review · ${action.status.replace("_", " ")}`,
             ),
           ]),
+          activities: capActivities([
+            ...rt.activities,
+            activity(
+              action.caseId,
+              "evidence_reviewed",
+              "Analyst review recorded",
+              `${action.status.replace("_", " ")}`,
+            ),
+          ]),
         })),
       };
 

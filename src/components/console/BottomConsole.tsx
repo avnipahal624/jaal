@@ -10,6 +10,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  ClipboardCheck,
   ClipboardCopy,
   Cpu,
   Eraser,
@@ -44,6 +45,7 @@ const ACTIVITY_ICON: Record<ActivityKind, LucideIcon> = {
   report_created: Check,
   integrity_verified: Check,
   integrity_mismatch: ShieldAlert,
+  evidence_reviewed: ClipboardCheck,
 };
 
 const ACTIVITY_COLOR: Record<ActivityKind, string> = {
@@ -56,6 +58,7 @@ const ACTIVITY_COLOR: Record<ActivityKind, string> = {
   report_created: "text-jteal",
   integrity_verified: "text-jgreen",
   integrity_mismatch: "text-jred",
+  evidence_reviewed: "text-jteal",
 };
 
 /** Split log lines into analysis vs system streams. */

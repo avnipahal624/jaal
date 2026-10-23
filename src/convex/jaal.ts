@@ -1192,6 +1192,14 @@ export const reviewEvidence = mutation({
             ? "marked incorrect by analyst"
             : "flagged for review";
       await pushLog(ctx.db, inv, "info", `Analyst review · ${doc.label} ${label}`, at);
+      await pushEvent(
+        ctx.db,
+        inv,
+        "evidence_reviewed",
+        "Analyst review recorded",
+        `${doc.label}: ${doc.extractedValue} — ${label}`,
+        at,
+      );
     }
   },
 });

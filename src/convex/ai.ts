@@ -57,6 +57,9 @@ async function callClaude(
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userContent }],
     }),
+    // Hard timeout: a hung provider request must fall back to SIMULATION,
+    // not stall the action until Convex's runtime limit.
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
     throw new Error(`Anthropic API ${res.status}`);
@@ -168,6 +171,7 @@ export const summaryAction = action({
           "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
         },
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
           model,
           max_tokens: 500,

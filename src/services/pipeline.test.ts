@@ -124,6 +124,37 @@ describe("identifier extraction", () => {
     expect(drafts.filter((d) => d.type === "upi")).toHaveLength(1);
   });
 
+  it("classifies email addresses separately and never double-labels them as UPI", () => {
+    const drafts = extractIdentifiers(
+      scammer(
+        "Write to support@refunds-portal.com or pay to cyber.verify@jaaldemo.",
+      ),
+    );
+    const emails = drafts.filter((d) => d.type === "email");
+    expect(emails).toHaveLength(1);
+    expect(emails[0]!.value.toLowerCase()).toBe("support@refunds-portal.com");
+    // The VPA handle (no dot-TLD after @) is still extracted as UPI …
+    expect(
+      drafts.some(
+        (d) => d.type === "upi" && d.value.toLowerCase() === "cyber.verify@jaaldemo",
+      ),
+    ).toBe(true);
+    // … and the email address never leaks into the UPI type.
+    expect(
+      drafts.some(
+        (d) => d.type === "upi" && d.value.toLowerCase().includes("refunds-portal"),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a bare VPA-shaped handle classified as UPI, not email", () => {
+    const drafts = extractIdentifiers(scammer("Refund goes to refunds.desk@jaaldemo only."));
+    expect(drafts.some((d) => d.type === "upi" && d.value === "refunds.desk@jaaldemo")).toBe(
+      true,
+    );
+    expect(drafts.some((d) => d.type === "email")).toBe(false);
+  });
+
   it("extracts nothing from decoy messages", () => {
     expect(extractIdentifiers(decoy("Call me on 9876543210 please"))).toEqual([]);
   });

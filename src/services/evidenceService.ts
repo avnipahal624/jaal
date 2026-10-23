@@ -8,6 +8,13 @@ import { sha256Hex } from "@/utils/hash";
  * databases or traces real accounts.
  */
 
+/**
+ * Handle-shaped identifiers. A domain with a dot-TLD after the @ is an email
+ * address; a bare alphanumeric suffix (per NPCI VPA rules the bank handle
+ * carries no dot) is a UPI ID. Emails are classified first so an address like
+ * support@paypal.com is never mislabeled as a UPI handle.
+ */
+const EMAIL_RE = /\b[a-z0-9][a-z0-9._-]*@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}\b/i;
 const UPI_RE = /\b[a-z0-9][a-z0-9._-]{2,}@[a-z][a-z0-9]{2,}\b/i;
 const PHONE_RE = /(?:\+91[\s-]?)?\b[6-9]\d{4}[\s-]?\d{5}\b/;
 const URL_RE = /\bhttps?:\/\/[^\s,;"')\]]+/i;
@@ -29,6 +36,8 @@ function labelFor(type: EvidenceType): string {
       return "Phone number";
     case "url":
       return "Suspicious URL";
+    case "email":
+      return "Email address";
     case "payment_request":
       return "Payment request";
     case "scam_message":
@@ -69,7 +78,13 @@ export function extractIdentifiers(message: ConversationMessage): EvidenceDraft[
     found.push(draft(type, clean, text));
   };
 
-  push("upi", text.match(UPI_RE)?.[0]);
+  // Email first: a dot-TLD domain wins over the VPA-shaped pattern, and the
+  // matched span is removed from the scan text so an address is never
+  // double-labeled as a (truncated) UPI handle.
+  const emailMatch = text.match(EMAIL_RE);
+  if (emailMatch) push("email", emailMatch[0]);
+  const upiScanText = emailMatch ? text.replace(EMAIL_RE, " ") : text;
+  push("upi", upiScanText.match(UPI_RE)?.[0]);
   push("phone", text.match(PHONE_RE)?.[0]);
   push("url", text.match(URL_RE)?.[0]);
   push("payment_request", text.match(MONEY_RE)?.[0]);
@@ -157,6 +172,8 @@ export function evidenceMatchesFilter(
       return item.type === "phone";
     case "url":
       return item.type === "url" || item.type === "other";
+    case "email":
+      return item.type === "email";
     case "message":
       return item.type === "scam_message";
     case "transcript":

@@ -3,6 +3,7 @@ import type { ActivityKind } from "@/types/investigation";
 import { formatClock, relativeTime, truncate } from "@/utils/formatters";
 import {
   ArrowRight,
+  ClipboardCheck,
   Fingerprint,
   Flag,
   FileSignature,
@@ -21,6 +22,7 @@ const KIND_ICON: Record<ActivityKind, typeof Radio> = {
   report_created: FileSignature,
   integrity_verified: ShieldCheck,
   integrity_mismatch: ShieldAlert,
+  evidence_reviewed: ClipboardCheck,
 };
 
 const KIND_COLOR: Record<ActivityKind, string> = {
@@ -33,6 +35,7 @@ const KIND_COLOR: Record<ActivityKind, string> = {
   report_created: "text-jteal border-jteal/40",
   integrity_verified: "text-jgreen border-jgreen/40",
   integrity_mismatch: "text-jred border-jred/40",
+  evidence_reviewed: "text-jteal border-jteal/40",
 };
 
 export interface FeedEntry {

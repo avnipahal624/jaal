@@ -13,6 +13,7 @@ const FILTERS: { id: EvidenceFilter; label: string }[] = [
   { id: "upi", label: "UPI/pay" },
   { id: "phone", label: "Phones" },
   { id: "url", label: "Links" },
+  { id: "email", label: "Emails" },
   { id: "verified", label: "Verified" },
   { id: "unverified", label: "Unverified" },
 ];

@@ -85,7 +85,8 @@ export type ActivityKind =
   | "stage_advanced"
   | "report_created"
   | "integrity_verified"
-  | "integrity_mismatch";
+  | "integrity_mismatch"
+  | "evidence_reviewed";
 
 export interface ActivityEvent {
   id: string;

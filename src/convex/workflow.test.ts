@@ -381,3 +381,66 @@ describe("authorization", () => {
     expect(aliceState.investigations).toHaveLength(1);
   });
 });
+
+describe("analyst review + report completeness", () => {
+  it("persists a review verdict, records one evidence_reviewed event, and reflects the review in the report", async () => {
+    const t = setup();
+    await createCase(t, "JAAL-300");
+    await t.mutation(api.jaal.sendMessage, {
+      caseId: "JAAL-300",
+      text: "Why is a payment required?",
+    });
+    const state = await t.query(api.jaal.state);
+    const item = state.sessions["JAAL-300"]!.evidence[0]!;
+    expect(item).toBeDefined();
+    const originalValue = item.value;
+    const originalHash = item.hash;
+
+    await t.mutation(api.jaal.reviewEvidence, {
+      evidenceId: item.id as never,
+      status: "confirmed",
+      note: "checked against transcript",
+    });
+
+    const after = await t.query(api.jaal.state);
+    const reviewed = after.sessions["JAAL-300"]!.evidence.find(
+      (e) => e.id === item.id,
+    )!;
+    // Verdict stored separately — extraction and hash untouched.
+    expect(reviewed.reviewStatus).toBe("confirmed");
+    expect(reviewed.reviewNote).toBe("checked against transcript");
+    expect(reviewed.reviewedAt).toBeGreaterThan(0);
+    expect(reviewed.value).toBe(originalValue);
+    expect(reviewed.hash).toBe(originalHash);
+
+    // Exactly one activity event for the review (no duplicates).
+    const events = after.sessions["JAAL-300"]!.activities.filter(
+      (a) => a.kind === "evidence_reviewed",
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]!.title).toBe("Analyst review recorded");
+
+    // The generated report carries the review on the evidence row.
+    const report = await t.mutation(api.jaal.generateReport, {
+      caseId: "JAAL-300",
+    });
+    const row = report.evidence.find((e) => e.id === item.id)!;
+    expect(row.review.status).toBe("confirmed");
+    expect(row.review.note).toBe("checked against transcript");
+    // Hash lifecycle data is present on the row too.
+    expect(row.hashStatus).toBe("generated");
+  });
+
+  it("completing an investigation is idempotent — no duplicate reports on repeat calls", async () => {
+    const t = setup();
+    await createCase(t, "JAAL-301");
+    await t.mutation(api.jaal.sendMessage, {
+      caseId: "JAAL-301",
+      text: "Why is a payment required?",
+    });
+    await t.mutation(api.jaal.completeInvestigation, { caseId: "JAAL-301" });
+    await t.mutation(api.jaal.completeInvestigation, { caseId: "JAAL-301" });
+    const state = await t.query(api.jaal.state);
+    expect(state.reports.filter((r) => r.caseId === "JAAL-301")).toHaveLength(1);
+  });
+});

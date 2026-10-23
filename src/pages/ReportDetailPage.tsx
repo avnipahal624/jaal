@@ -316,14 +316,31 @@ export default function ReportDetailPage() {
                         {e.hash ? shortHash(e.hash, 12) : "—"}
                       </td>
                       <td className="px-2 py-1.5">
-                        <Chip
-                          tone={
-                            HASH_TONE[e.hashStatus as keyof typeof HASH_TONE] ??
-                              "border-jborder text-jmuted"
-                          }
-                        >
-                          {HASH_LABEL[e.hashStatus as keyof typeof HASH_LABEL] ?? e.hashStatus}
-                        </Chip>
+                        <span className="flex flex-wrap items-center gap-1">
+                          <Chip
+                            tone={
+                              HASH_TONE[e.hashStatus as keyof typeof HASH_TONE] ??
+                                "border-jborder text-jmuted"
+                            }
+                          >
+                            {HASH_LABEL[e.hashStatus as keyof typeof HASH_LABEL] ?? e.hashStatus}
+                          </Chip>
+                          {e.review?.status && (
+                            <Chip
+                              tone={
+                                e.review.status === "confirmed"
+                                  ? "border-jgreen/50 bg-jgreen/10 text-jgreen"
+                                  : e.review.status === "incorrect"
+                                    ? "border-jred/50 bg-jred/10 text-jred"
+                                    : "border-jamber/50 bg-jamber/10 text-jamber"
+                              }
+                            >
+                              {e.review.status === "needs_review"
+                                ? "needs review"
+                                : `analyst: ${e.review.status}`}
+                            </Chip>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   ))}

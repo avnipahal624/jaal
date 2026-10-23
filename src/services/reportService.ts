@@ -67,6 +67,11 @@ export function buildReport(
       extractedAt: e.extractedAt,
       hash: e.hash,
       hashStatus: e.hashStatus,
+      review: {
+        status: e.reviewStatus ?? null,
+        note: e.reviewNote ?? null,
+        reviewedAt: e.reviewedAt ?? null,
+      },
     })),
     timeline: runtime.activities.map((a) => ({
       timestamp: a.timestamp,

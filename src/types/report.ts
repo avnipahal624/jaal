@@ -8,6 +8,12 @@ export interface ReportEvidenceRow {
   extractedAt: number;
   hash: string | null;
   hashStatus: string;
+  /** Analyst verdict, stored separately from the extraction. */
+  review: {
+    status: string | null;
+    note: string | null;
+    reviewedAt: number | null;
+  };
 }
 
 export interface ReportSummary {
