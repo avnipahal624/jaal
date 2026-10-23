@@ -335,6 +335,10 @@
     background: #fff !important;
     color: #0b1b24 !important;
   }
+  /* Keep the app-shell surround white when "Background graphics" is enabled */
+  .jaal-grid {
+    background: #fff !important;
+  }
   .jaal-print-sheet {
     background: #fff !important;
     color: #0b1b24 !important;

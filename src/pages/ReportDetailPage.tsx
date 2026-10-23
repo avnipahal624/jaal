@@ -129,8 +129,65 @@ export default function ReportDetailPage() {
           </p>
         </Section>
 
-        {/* 2 · Transcript */}
-        <Section index="02" title="Conversation transcript">
+        {/* 2 · Executive summary */}
+        <Section index="02" title="Executive summary">
+          <div className="space-y-1.5">
+            <div className="border-l-2 border-jcyan/60 bg-jcyan/[0.05] px-2.5 py-1.5">
+              <p className="jaal-label !text-[9px]">Claimed scam scenario</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-jtext/90">
+                {report.summary.scenario || "—"}
+              </p>
+            </div>
+            <div className="border-l-2 border-jamber/60 bg-jamber/[0.05] px-2.5 py-1.5">
+              <p className="jaal-label !text-[9px]">Manipulation tactics</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-jtext/90">
+                {report.summary.tactics || "—"}
+              </p>
+            </div>
+            <div className="border-l-2 border-jred/60 bg-jred/[0.05] px-2.5 py-1.5">
+              <p className="jaal-label !text-[9px]">Payment request details</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-jtext/90">
+                {report.summary.payment || "—"}
+              </p>
+            </div>
+          </div>
+          {report.summary.moments.length > 0 && (
+            <div className="mt-2">
+              <p className="jaal-label !text-[9px] mb-1.5">Important moments</p>
+              <ul className="space-y-1">
+                {report.summary.moments.map((m, i) => (
+                  <li
+                    key={i}
+                    className="border border-jborder/50 bg-jsurface px-2.5 py-1.5"
+                  >
+                    <p className="font-mono text-[9px] uppercase tracking-wider text-jamber">
+                      {m.label} · {formatTime(m.timestamp)}
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-jtext/85">
+                      “{m.text}”
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Section>
+
+        {/* 3 · Unknowns */}
+        <Section index="03" title="What we could not establish">
+          {report.unknowns.length === 0 ? (
+            <p className="text-xs text-jmuted">No gaps recorded.</p>
+          ) : (
+            <ul className="list-disc space-y-1 pl-4 text-[12px] leading-relaxed text-jtext/90">
+              {report.unknowns.map((u, i) => (
+                <li key={i}>{u}</li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        {/* 4 · Transcript */}
+        <Section index="04" title="Conversation transcript">
           {report.transcript.length === 0 ? (
             <p className="text-xs text-jmuted">No messages recorded.</p>
           ) : (
@@ -156,8 +213,8 @@ export default function ReportDetailPage() {
           )}
         </Section>
 
-        {/* 3 · Tactic analysis */}
-        <Section index="03" title="Scam tactic analysis">
+        {/* 5 · Tactic analysis */}
+        <Section index="05" title="Scam tactic analysis">
           {report.tactics.length === 0 ? (
             <p className="text-xs text-jmuted">No tactics detected.</p>
           ) : (
@@ -184,8 +241,8 @@ export default function ReportDetailPage() {
           )}
         </Section>
 
-        {/* 4 · Kill-chain */}
-        <Section index="04" title="Kill-chain progression">
+        {/* 6 · Kill-chain */}
+        <Section index="06" title="Kill-chain progression">
           <ol className="space-y-1.5">
             {report.stages.map((s) => (
               <li
@@ -224,8 +281,8 @@ export default function ReportDetailPage() {
           </ol>
         </Section>
 
-        {/* 5 · Extracted identifiers */}
-        <Section index="05" title="Extracted identifiers & hashes">
+        {/* 7 · Extracted identifiers */}
+        <Section index="07" title="Extracted identifiers & hashes">
           {report.evidence.length === 0 ? (
             <p className="text-xs text-jmuted">No identifiers extracted.</p>
           ) : (
@@ -276,8 +333,8 @@ export default function ReportDetailPage() {
           )}
         </Section>
 
-        {/* 6 · Timeline */}
-        <Section index="06" title="Investigation timeline">
+        {/* 8 · Timeline */}
+        <Section index="08" title="Investigation timeline">
           {report.timeline.length === 0 ? (
             <p className="text-xs text-jmuted">No timeline events.</p>
           ) : (
@@ -294,8 +351,8 @@ export default function ReportDetailPage() {
           )}
         </Section>
 
-        {/* 7 · Integrity */}
-        <Section index="07" title="Integrity verification results">
+        {/* 9 · Integrity */}
+        <Section index="09" title="Integrity verification results">
           <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
             {[
               ["Collected", report.integrity.collected, "text-jcyan"],
@@ -335,8 +392,8 @@ export default function ReportDetailPage() {
           </p>
         </Section>
 
-        {/* 8 · Notes */}
-        <Section index="08" title="Analyst notes">
+        {/* 10 · Notes */}
+        <Section index="10" title="Analyst notes">
           <p className="text-[12px] leading-relaxed text-jtext/90">
             {report.analystNotes}
           </p>
