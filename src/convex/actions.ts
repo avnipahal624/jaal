@@ -15,7 +15,7 @@
  */
 import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
 import type { EvidenceReport } from "@/types/report";
 
@@ -51,18 +51,18 @@ async function tryLLMStrategy(
       activeStage: inv.currentStage,
     });
     if (res.suggestion) {
-      await ctx.runMutation(api.jaal.applyStrategyOverride, {
+      await ctx.runMutation(internal.jaal.applyStrategyOverride, {
         caseId,
         override: res.suggestion as Suggestion,
       });
     } else if (res.fallbackReason) {
-      await ctx.runMutation(api.jaal.applyStrategyOverride, {
+      await ctx.runMutation(internal.jaal.applyStrategyOverride, {
         caseId,
         fallbackReason: res.fallbackReason,
       });
     }
   } catch (err) {
-    await ctx.runMutation(api.jaal.applyStrategyOverride, {
+    await ctx.runMutation(internal.jaal.applyStrategyOverride, {
       caseId,
       fallbackReason: err instanceof Error ? err.message : "provider error",
     });
@@ -152,7 +152,7 @@ export const generateReportWithAI = action({
           stages: meta.stages,
         });
         if (res?.summary) {
-          await ctx.runMutation(api.jaal.applyReportSummary, {
+          await ctx.runMutation(internal.jaal.applyReportSummary, {
             caseId: args.caseId,
             reportId: report.id,
             summary: res.summary,
