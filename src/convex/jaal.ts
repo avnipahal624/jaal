@@ -121,9 +121,9 @@ function nextCaseId(existing: Doc<"investigations">[]): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Full authoritative application state for the caller, mapped to the exact
- * shapes the existing frontend reducer produces. Reactive: clients subscribed
- * to this query update in real time as messages are processed.
+ * Bounded live workspace snapshot. Full history remains in the database and
+ * generated reports; this subscription hydrates the 50 most recently active
+ * cases and recent per-case activity so reconnects cannot load unbounded data.
  */
 export const state = query({
   args: {},
@@ -169,12 +169,14 @@ export const dashboard = query({
     const owner = await requireOwner(ctx);
     const invDocs = await ctx.db
       .query("investigations")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .withIndex("by_owner_activity", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(100);
     const reportDocs = await ctx.db
       .query("reports")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .withIndex("by_owner_generated", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(100);
 
     let evidenceCount = 0;
     for (const inv of invDocs) {
