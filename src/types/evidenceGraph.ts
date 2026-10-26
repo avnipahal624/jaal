@@ -61,16 +61,20 @@ export interface GraphEvidenceData {
   };
 }
 
-export interface GraphNode {
+type GraphNodeBase = {
   /** Stable: `${prefix}:${persisted record id}` — prefix per node type. */
   id: string;
-  type: GraphNodeType;
   /** Persisted Convex record id this node projects. */
   recordId: string;
   label: string;
   timestamp: number;
-  data: GraphMessageData | GraphIndicatorData | GraphTacticData | GraphEvidenceData;
-}
+};
+
+export type GraphNode =
+  | (GraphNodeBase & { type: "message"; data: GraphMessageData })
+  | (GraphNodeBase & { type: "indicator"; data: GraphIndicatorData })
+  | (GraphNodeBase & { type: "tactic"; data: GraphTacticData })
+  | (GraphNodeBase & { type: "evidence"; data: GraphEvidenceData });
 
 export interface GraphEdge {
   /** Stable: `${type}:${from}->${to}`. */
