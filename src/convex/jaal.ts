@@ -380,11 +380,20 @@ export const createInvestigation = mutation({
     transcript: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (
+      args.title.trim().length === 0 || args.title.length > 200 ||
+      args.description.length > 3_000 ||
+      (args.notes?.length ?? 0) > 5_000 ||
+      (args.transcript?.length ?? 0) > 100_000 ||
+      (args.caseId?.length ?? 0) > 64
+    ) {
+      throw new Error("Investigation input exceeds the supported size limits.");
+    }
     const owner = await requireOwner(ctx);
     const existing = await ctx.db
       .query("investigations")
       .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .take(500);
     let caseId = args.caseId ?? nextCaseId(existing);
     if (existing.some((i) => i.caseId === caseId)) {
       caseId = nextCaseId(existing);
@@ -818,6 +827,7 @@ export const sendMessage = mutation({
     text: v.string(),
   },
   handler: async (ctx, { caseId, text }) => {
+    if (text.length > 2_000) throw new Error("Message exceeds the 2,000 character limit.");
     const trimmed = text.trim();
     if (!trimmed) return { reply: null, completed: false, exhausted: true };
     const inv = await requireInvestigation(ctx, caseId);
@@ -897,6 +907,9 @@ export const ingestMessages = mutation({
     ),
   },
   handler: async (ctx, { caseId, messages }) => {
+    if (messages.length > 500 || messages.some((m) => m.content.length > 5_000)) {
+      throw new Error("Transcript import exceeds the supported size limits (500 messages, 5,000 characters each).");
+    }
     const inv = await requireInvestigation(ctx, caseId);
     let count = 0;
     for (const m of messages) {
@@ -1285,9 +1298,26 @@ export const applyReportSummary = internalMutation({
 
 export const updateSettings = mutation({
   args: {
-    appearance: v.optional(v.any()),
-    investigation: v.optional(v.any()),
-    simulation: v.optional(v.any()),
+    appearance: v.optional(v.object({
+      theme: v.optional(v.literal("dark")),
+      density: v.optional(v.union(v.literal("compact"), v.literal("comfortable"))),
+      animationIntensity: v.optional(v.union(v.literal("subtle"), v.literal("standard"), v.literal("vivid"))),
+      reducedMotion: v.optional(v.boolean()),
+    })),
+    investigation: v.optional(v.object({
+      defaultCategory: v.optional(v.union(
+        v.literal("Digital arrest scam"), v.literal("UPI/payment scam"),
+        v.literal("Phishing"), v.literal("Impersonation"), v.literal("Job scam"),
+        v.literal("Investment scam"), v.literal("Other"),
+      )),
+      defaultDetectionMode: v.optional(v.union(v.literal("simulation"), v.literal("balanced"), v.literal("manual"))),
+      autoExtract: v.optional(v.boolean()),
+      autoHash: v.optional(v.boolean()),
+      aiSuggestions: v.optional(v.boolean()),
+    })),
+    simulation: v.optional(v.object({
+      simulatedActivity: v.optional(v.boolean()),
+    })),
   },
   handler: async (ctx, args) => {
     const owner = await requireOwner(ctx);
