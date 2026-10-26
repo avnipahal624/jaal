@@ -30,7 +30,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState(
     () => localStorage.getItem(REMEMBER_KEY) ?? "",
   );
-  const [password, setDemo passphrase (not verified)] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(() => Boolean(localStorage.getItem(REMEMBER_KEY)));
   const [error, setError] = useState<string | null>(null);
