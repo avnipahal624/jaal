@@ -16,7 +16,7 @@ import { copyToClipboard } from "@/utils/export";
 import { shortHash } from "@/utils/hash";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { integrityKey, reviewKey, statusStyle } from "@/theme/status";
+import { integrityKey, statusStyle } from "@/theme/status";
 import {
   AlertTriangle,
   CheckCircle2,
