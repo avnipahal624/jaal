@@ -32,7 +32,7 @@ This project is set up already and running on a cloud environment, as well as a 
 
 ## Environment Variables
 
-The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_URL environment variables on the client side. Convex schema validation is enabled for explicitly typed fields; keep flexible `v.any()` payloads narrow and replace them with concrete validators as their persisted formats stabilize.
+The project uses project-specific `CONVEX_DEPLOYMENT` and `VITE_CONVEX_URL` environment variables for local development. Convex schema validation is enabled, and the JAAL investigation, report, settings, analysis, and evidence-graph payloads use explicit validators. Convex generated API bindings are committed so CI can run lint, typecheck/build, and tests without deployment credentials.
 
 The convex server has a separate set of environment variables that are accessible by the convex backend.
 
