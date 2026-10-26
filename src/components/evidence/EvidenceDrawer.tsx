@@ -67,6 +67,8 @@ export function EvidenceDrawer({
 
   useEffect(() => {
     if (item) {
+      // The selected evidence record changed; reset its transient editor state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResult(null);
       setEditing(false);
       setDraftContent(item.content);
