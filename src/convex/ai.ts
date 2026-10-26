@@ -16,6 +16,15 @@ import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { z } from "zod";
 
+async function requireAuthenticated(ctx: {
+  auth: { getUserIdentity(): Promise<{ subject: string } | null> };
+}): Promise<void> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity?.subject) {
+    throw new Error("Authentication required to use JAAL AI actions.");
+  }
+}
+
 const SUGGESTION_SCHEMA = z.object({
   objective: z.string().min(1).max(300),
   informationGap: z.string().min(1).max(300),
@@ -100,11 +109,12 @@ export const strategyAction = action({
     ),
     activeStage: v.string(),
   },
-  handler: async (_ctx, args): Promise<{
+  handler: async (ctx, args): Promise<{
     engineMode: string;
     suggestion: Suggestion | null;
     fallbackReason?: string;
   }> => {
+    await requireAuthenticated(ctx);
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return { engineMode: "SIMULATION", suggestion: null };
@@ -159,7 +169,8 @@ export const summaryAction = action({
     tactics: v.array(v.string()),
     stages: v.array(v.string()),
   },
-  handler: async (_ctx, args): Promise<{ summary: string; engineMode: string } | null> => {
+  handler: async (ctx, args): Promise<{ summary: string; engineMode: string } | null> => {
+    await requireAuthenticated(ctx);
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return null;
     try {
