@@ -199,7 +199,10 @@ const schema = defineSchema(
       sourceText: v.string(),
       timestamp: v.number(),
       explanation: v.string(),
-    }).index("by_investigation", ["investigationId"]),
+    })
+      .index("by_investigation", ["investigationId"])
+      .index("by_investigation_timestamp", ["investigationId", "timestamp"])
+      .index("by_investigation_message", ["investigationId", "messageId"]),
 
     /** Extracted identifiers with SHA-256 integrity records. */
     evidence: defineTable({
@@ -233,7 +236,9 @@ const schema = defineSchema(
       reviewNote: v.optional(v.string()),
       reviewedAt: v.optional(v.number()),
       createdAt: v.number(),
-    }).index("by_investigation", ["investigationId"]),
+    })
+      .index("by_investigation", ["investigationId"])
+      .index("by_investigation_type_normalized", ["investigationId", "evidenceType", "normalizedValue"]),
 
     /** Investigation events powering the activity console. */
     events: defineTable({
