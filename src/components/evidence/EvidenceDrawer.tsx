@@ -59,7 +59,7 @@ export function EvidenceDrawer({
     reviewEvidence,
   } = useJaal();
   const [busy, setBusy] = useState<null | "hash" | "verify">(null);
-  const [result, setResult] = useState<null | "match" | "mismatch" | "error">(null);
+  const [result, setResult] = useState<null | "match" | "mismatch" | "generated" | "error">(null);
   const [editing, setEditing] = useState(false);
   const [draftContent, setDraftContent] = useState("");
   const [notes, setNotes] = useState("");
@@ -96,7 +96,7 @@ export function EvidenceDrawer({
     const outcome = await verifyEvidence(caseId, item.id);
     setBusy(null);
     setResult(outcome);
-    if (outcome === "error" && !item.hash) {
+    if (outcome === "generated") {
       toast.info("No recorded hash yet — one was generated from current content.");
     }
   };
@@ -278,7 +278,9 @@ export function EvidenceDrawer({
                       ? "Content matches the recorded hash. The bytes are unchanged since recording — this does not prove the identifier is genuine or admissible."
                       : result === "mismatch"
                         ? "Hash mismatch — the stored content no longer matches the recorded hash. Treat this item as altered."
-                        : "No recorded hash was available; a new hash was generated from the current content."}
+                        : result === "generated"
+                          ? "No prior hash was recorded. A baseline hash has now been generated; verify again to compare future content against it."
+                          : "The integrity check could not be completed. Try again or generate a new baseline hash."}
                   </p>
                 </motion.div>
               )}
