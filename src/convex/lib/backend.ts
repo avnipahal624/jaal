@@ -567,7 +567,7 @@ export async function buildRuntime(
     bounded
       ? db.query("messages")
           .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
-          .order("desc").take(100)
+          .order("desc").take(101)
       : db.query("messages")
           .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
           .collect(),
@@ -588,7 +588,7 @@ export async function buildRuntime(
     bounded
       ? db.query("events")
           .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
-          .order("desc").take(50)
+          .order("desc").take(51)
       : db.query("events")
           .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
           .collect(),
@@ -602,7 +602,7 @@ export async function buildRuntime(
     bounded
       ? db.query("strategies")
           .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-          .order("desc").take(10)
+          .order("desc").take(11)
       : db.query("strategies")
           .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
           .collect(),
@@ -619,11 +619,17 @@ export async function buildRuntime(
     null;
 
   const sortedMessages = [...messages].sort((a, b) => a.timestamp - b.timestamp);
+  const runtimeMessages = bounded ? sortedMessages.slice(-100) : sortedMessages;
+  const historyTruncated = bounded && (
+    messages.length > 100 || evidence.length > 100 || tactics.length > 100 ||
+    events.length > 50 || logs.length > 50
+  );
   return {
     caseId: inv.caseId,
-    messages: sortedMessages.map((m) => docToMessage(m, inv.caseId)),
-    evidence: (bounded ? [...evidence].reverse() : evidence).map(docToEvidence),
-    tactics: (bounded ? [...tactics].reverse() : tactics).map((t) => ({
+    messages: runtimeMessages.map((m) => docToMessage(m, inv.caseId)),
+    historyTruncated,
+    evidence: (bounded ? [...evidence].reverse().slice(-100) : evidence).map(docToEvidence),
+    tactics: (bounded ? [...tactics].reverse().slice(-100) : tactics).map((t) => ({
       id: `${t.tactic}:${t.messageId ?? "case"}`,
       caseId: inv.caseId,
       tactic: t.tactic as never,
@@ -633,11 +639,9 @@ export async function buildRuntime(
       explanation: t.explanation,
     })),
     stages: (inv.stages as KillChainStage[]) ?? createStages(),
-    logs: (bounded ? [...logs].reverse() : [...logs].sort((a, b) => a.timestamp - b.timestamp))
-      .slice(-MAX_LOG_DOCS)
+    logs: (bounded ? [...logs].reverse().slice(-50) : [...logs].sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_LOG_DOCS))
       .map(docToLog),
-    activities: (bounded ? [...events].reverse() : [...events].sort((a, b) => a.timestamp - b.timestamp))
-      .slice(-MAX_EVENT_DOCS)
+    activities: (bounded ? [...events].reverse().slice(-50) : [...events].sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_EVENT_DOCS))
       .map(docToActivity),
     cursor: inv.cursor,
     turnCount: inv.turnCount,
