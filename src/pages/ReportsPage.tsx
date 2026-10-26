@@ -37,6 +37,7 @@ export default function ReportsPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]["id"]>("all");
   const [dateFilter, setDateFilter] = useState<(typeof DATE_OPTIONS)[number]["id"]>("all");
+  const [now] = useState(() => Date.now());
 
   const reports = useMemo(
     () => [...state.reports].sort((a, b) => b.generatedAt - a.generatedAt),
@@ -45,14 +46,13 @@ export default function ReportsPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const now = Date.now();
     return reports.filter((r) => {
       if (caseFilter !== "all" && r.caseId !== caseFilter) return false;
       if (categoryFilter !== "all" && r.category !== categoryFilter) return false;
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       if (dateFilter === "today") {
         const d = new Date(r.generatedAt);
-        const t = new Date();
+        const t = new Date(now);
         if (d.toDateString() !== t.toDateString()) return false;
       } else if (dateFilter === "week" && now - r.generatedAt > 7 * 864e5) {
         return false;
@@ -66,7 +66,7 @@ export default function ReportsPage() {
         return false;
       return true;
     });
-  }, [reports, query, caseFilter, categoryFilter, statusFilter, dateFilter]);
+  }, [reports, query, caseFilter, categoryFilter, statusFilter, dateFilter, now]);
 
   // Cases that can still produce a report (evidence present, none generated yet)
   const candidates = useMemo(() => {
