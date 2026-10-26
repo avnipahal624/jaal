@@ -559,11 +559,12 @@ async function generateReportDoc(
     id: opts.reportId ?? built.id,
   };
 
-  const existing = await db
+  const latestReport = await db
     .query("reports")
     .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-  const version = existing.length + 1;
+    .order("desc")
+    .first();
+  const version = (latestReport?.reportVersion ?? 0) + 1;
 
   await db.insert("reports", {
     investigationId: inv._id,
@@ -1262,11 +1263,12 @@ export const applyReportSummary = internalMutation({
   },
   handler: async (ctx, { caseId, reportId, summary, engineMode }) => {
     const inv = await requireInvestigation(ctx, caseId);
-    const docs = await ctx.db
+    const doc = await ctx.db
       .query("reports")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect();
-    const doc = docs.find((d) => d.reportId === reportId);
+      .withIndex("by_investigation_report_id", (q) =>
+        q.eq("investigationId", inv._id).eq("reportId", reportId),
+      )
+      .first();
     if (!doc) return;
     const data = doc.reportData as EvidenceReport;
     await ctx.db.patch(doc._id, {
