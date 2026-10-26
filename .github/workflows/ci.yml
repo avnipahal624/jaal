@@ -13,8 +13,8 @@ jobs:
     name: Lint, typecheck, build, and test
     runs-on: ubuntu-latest
     env:
-      CONVEX_DEPLOYMENT: ${{ secrets.CONVEX_DEPLOYMENT }}
-      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      # Local code generation does not deploy functions or require secrets.
+      CONVEX_DEPLOYMENT: dev:jaal-ci
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -25,13 +25,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Generate Convex API types
-        if: ${{ env.CONVEX_DEPLOYMENT != '' && env.CONVEX_DEPLOY_KEY != '' }}
-        run: bunx convex codegen
+        run: bunx convex codegen --typecheck disable
       - name: Lint
         run: bun run lint
       - name: Build and typecheck
-        if: ${{ env.CONVEX_DEPLOYMENT != '' && env.CONVEX_DEPLOY_KEY != '' }}
         run: bun run build
       - name: Run tests
-        if: ${{ env.CONVEX_DEPLOYMENT != '' && env.CONVEX_DEPLOY_KEY != '' }}
         run: bun run test
