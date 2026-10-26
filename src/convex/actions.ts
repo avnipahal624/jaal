@@ -46,7 +46,7 @@ async function tryLLMStrategy(
   const inv = await ctx.runQuery(api.jaal.investigationMeta, { caseId });
   if (!inv) return;
   try {
-    const res = await ctx.runAction(api.ai.strategyAction, {
+    const res = await ctx.runAction(internal.ai.strategyAction, {
       transcript: inv.transcript.slice(-12),
       activeStage: inv.currentStage,
     });
@@ -141,7 +141,7 @@ export const generateReportWithAI = action({
         caseId: args.caseId,
       });
       if (meta) {
-        const res = await ctx.runAction(api.ai.summaryAction, {
+        const res = await ctx.runAction(internal.ai.summaryAction, {
           title: meta.title,
           category: meta.category,
           transcript: meta.transcript.map((m: { author: string; text: string }) => ({
