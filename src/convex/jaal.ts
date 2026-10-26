@@ -123,7 +123,7 @@ function nextCaseId(existing: Doc<"investigations">[]): string {
 /**
  * Bounded live workspace snapshot. Full history remains in the database and
  * generated reports; this subscription hydrates the 50 most recently active
- * cases and recent per-case activity so reconnects cannot load unbounded data.
+ * cases' recent activity so reconnects cannot load unbounded transcripts.
  */
 export const state = query({
   args: {},
@@ -448,6 +448,9 @@ export const createInvestigation = mutation({
     // Imported / pasted transcripts are indexed as messages + evidence.
     if (args.transcript?.trim()) {
       const lines = args.transcript.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length > 500) {
+        throw new Error("Transcript import is limited to 500 lines.");
+      }
       let stamp = 0;
       let number = 0;
       for (const line of lines) {
@@ -939,6 +942,9 @@ export const approveStrategy = mutation({
     editedText: v.optional(v.string()),
   },
   handler: async (ctx, { caseId, editedText }) => {
+    if ((editedText?.length ?? 0) > 2_000) {
+      throw new Error("Strategy text exceeds the 2,000 character limit.");
+    }
     const inv = await requireInvestigation(ctx, caseId);
     const pending = await ctx.db
       .query("strategies")
@@ -1160,6 +1166,9 @@ export const verifyEvidence = mutation({
 export const setEvidenceContent = mutation({
   args: { evidenceId: v.id("evidence"), content: v.string() },
   handler: async (ctx, { evidenceId, content }) => {
+    if (content.length > 20_000) {
+      throw new Error("Evidence content exceeds the 20,000 character limit.");
+    }
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return;
     const owner = await requireOwner(ctx);
@@ -1180,6 +1189,9 @@ export const setEvidenceContent = mutation({
 export const setEvidenceNotes = mutation({
   args: { evidenceId: v.id("evidence"), notes: v.string() },
   handler: async (ctx, { evidenceId, notes }) => {
+    if (notes.length > 5_000) {
+      throw new Error("Evidence notes exceed the 5,000 character limit.");
+    }
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return;
     const owner = await requireOwner(ctx);
@@ -1204,6 +1216,9 @@ export const reviewEvidence = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, { evidenceId, status, note }) => {
+    if ((note?.length ?? 0) > 2_000) {
+      throw new Error("Review note exceeds the 2,000 character limit.");
+    }
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return;
     const owner = await requireOwner(ctx);
