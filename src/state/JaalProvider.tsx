@@ -70,7 +70,7 @@ interface JaalContextValue {
   setCaseStatus: (caseId: string, status: Investigation["status"]) => void;
   // evidence
   generateHash: (caseId: string, evidenceId: string) => Promise<void>;
-  verifyEvidence: (caseId: string, evidenceId: string) => Promise<"match" | "mismatch" | "error">;
+  verifyEvidence: (caseId: string, evidenceId: string) => Promise<"match" | "mismatch" | "generated" | "error">;
   setEvidenceContent: (caseId: string, evidenceId: string, content: string) => void;
   setEvidenceNotes: (caseId: string, evidenceId: string, notes: string) => void;
   /** Analyst review verdict — stored separately from the extraction. */
@@ -740,7 +740,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   );
 
   const verifyEvidence = useCallback(
-    async (caseId: string, evidenceId: string): Promise<"match" | "mismatch" | "error"> => {
+    async (caseId: string, evidenceId: string): Promise<"match" | "mismatch" | "generated" | "error"> => {
       if (remote) {
         try {
           return await verifyEvidenceMut({ evidenceId: evidenceId as never });
@@ -752,7 +752,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       if (!item) return "error";
       if (!item.hash) {
         await generateHash(caseId, evidenceId);
-        return "error";
+        return "generated";
       }
       try {
         const result = await verifyEvidenceIntegrity(item);
