@@ -7,9 +7,9 @@
  * HASH_GENERATED / KILLCHAIN_UPDATED / STRATEGY_GENERATED updates as soon as
  * a mutation commits — this replaces an SSE stream with Convex subscriptions.
  *
- * All case resources are scoped to the authenticated owner (identity subject,
- * or the shared "demo" owner for simulation logins); every mutation re-checks
- * ownership server-side and never trusts a client-claimed caseId alone.
+ * All case resources are scoped to the authenticated Convex identity. Local
+ * simulation sessions never become a shared backend identity; every case
+ * mutation re-checks ownership server-side.
  */
 import { v } from "convex/values";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
@@ -178,6 +178,7 @@ export const dashboard = query({
       .take(100);
 
     let evidenceCount = 0;
+    const evidenceCounts: Record<string, number> = {};
     for (const inv of invDocs) {
       const items = await ctx.db
         .query("evidence")
@@ -185,6 +186,7 @@ export const dashboard = query({
           q.eq("investigationId", inv._id),
         )
         .take(500);
+      evidenceCounts[inv._id] = items.length;
       evidenceCount += items.length;
     }
 
@@ -193,7 +195,7 @@ export const dashboard = query({
       .slice(0, 6)
       .map((d) => ({
         ...docToInvestigation(d),
-        evidenceCount: 0,
+        evidenceCount: evidenceCounts[d._id] ?? 0,
       }));
 
     const recentEvents: {
@@ -358,7 +360,11 @@ export const createInvestigation = mutation({
   args: {
     caseId: v.optional(v.string()),
     title: v.string(),
-    category: v.string(),
+    category: v.union(
+      v.literal("Digital arrest scam"), v.literal("UPI/payment scam"),
+      v.literal("Phishing"), v.literal("Impersonation"), v.literal("Job scam"),
+      v.literal("Investment scam"), v.literal("Other"),
+    ),
     description: v.string(),
     notes: v.optional(v.string()),
     source: v.union(
