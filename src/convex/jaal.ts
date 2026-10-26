@@ -129,10 +129,13 @@ export const state = query({
   args: {},
   handler: async (ctx) => {
     const owner = await requireOwner(ctx);
+    // Keep the reactive bootstrap bounded. Case detail remains stored in full;
+    // the workspace bootstrap loads the 50 most recently active cases.
     const invDocs = await ctx.db
       .query("investigations")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .withIndex("by_owner_activity", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(50);
 
     const investigations = invDocs
       .map(docToInvestigation)
@@ -145,8 +148,9 @@ export const state = query({
 
     const reportDocs = await ctx.db
       .query("reports")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .withIndex("by_owner_generated", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(50);
     const reports = reportDocs
       .map((d) => d.reportData as EvidenceReport)
       .sort((a, b) => b.generatedAt - a.generatedAt)
@@ -235,11 +239,10 @@ export const listReports = query({
     const owner = await requireOwner(ctx);
     const docs = await ctx.db
       .query("reports")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
-    return docs
-      .map((d) => d.reportData as EvidenceReport)
-      .sort((a, b) => b.generatedAt - a.generatedAt);
+      .withIndex("by_owner_generated", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(100);
+    return docs.map((d) => d.reportData as EvidenceReport);
   },
 });
 
@@ -247,11 +250,12 @@ export const getReport = query({
   args: { reportId: v.string() },
   handler: async (ctx, { reportId }) => {
     const owner = await requireOwner(ctx);
-    const docs = await ctx.db
+    const doc = await ctx.db
       .query("reports")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
-    const doc = docs.find((d) => d.reportId === reportId);
+      .withIndex("by_owner_report_id", (q) =>
+        q.eq("owner", owner).eq("reportId", reportId),
+      )
+      .first();
     return doc ? (doc.reportData as EvidenceReport) : null;
   },
 });
