@@ -558,40 +558,54 @@ export async function refreshStrategy(
 export async function buildRuntime(
   db: DatabaseReader | DatabaseWriter,
   inv: Doc<"investigations">,
+  options: { bounded?: boolean } = {},
 ): Promise<CaseRuntime> {
-  // Bound the live workspace payload. Full source records remain in the
-  // database and reports are generated from the stored history, not this view.
+  // The reactive workspace uses a bounded snapshot; report generation keeps
+  // full history so exports never silently omit older transcript/evidence.
+  const bounded = options.bounded ?? false;
   const [messages, evidence, tactics, events, logs, strategies] = await Promise.all([
-    db
-      .query("messages")
-      .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
-      .order("desc")
-      .take(100),
-    db
-      .query("evidence")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .order("desc")
-      .take(100),
-    db
-      .query("tactics")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .order("desc")
-      .take(100),
-    db
-      .query("events")
-      .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
-      .order("desc")
-      .take(50),
-    db
-      .query("logs")
-      .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
-      .order("desc")
-      .take(50),
-    db
-      .query("strategies")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .order("desc")
-      .take(10),
+    bounded
+      ? db.query("messages")
+          .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(100)
+      : db.query("messages")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("evidence")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(100)
+      : db.query("evidence")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("tactics")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(100)
+      : db.query("tactics")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("events")
+          .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(50)
+      : db.query("events")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("logs")
+          .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(50)
+      : db.query("logs")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("strategies")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(10)
+      : db.query("strategies")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
   ]);
 
   // Latest usable strategy suggestion: a pending one wins, otherwise the most
@@ -608,8 +622,8 @@ export async function buildRuntime(
   return {
     caseId: inv.caseId,
     messages: sortedMessages.map((m) => docToMessage(m, inv.caseId)),
-    evidence: [...evidence].reverse().map(docToEvidence),
-    tactics: [...tactics].reverse().map((t) => ({
+    evidence: (bounded ? [...evidence].reverse() : evidence).map(docToEvidence),
+    tactics: (bounded ? [...tactics].reverse() : tactics).map((t) => ({
       id: `${t.tactic}:${t.messageId ?? "case"}`,
       caseId: inv.caseId,
       tactic: t.tactic as never,
@@ -619,10 +633,10 @@ export async function buildRuntime(
       explanation: t.explanation,
     })),
     stages: (inv.stages as KillChainStage[]) ?? createStages(),
-    logs: [...logs].reverse()
+    logs: (bounded ? [...logs].reverse() : [...logs].sort((a, b) => a.timestamp - b.timestamp))
       .slice(-MAX_LOG_DOCS)
       .map(docToLog),
-    activities: [...events].reverse()
+    activities: (bounded ? [...events].reverse() : [...events].sort((a, b) => a.timestamp - b.timestamp))
       .slice(-MAX_EVENT_DOCS)
       .map(docToActivity),
     cursor: inv.cursor,
