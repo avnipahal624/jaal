@@ -17,7 +17,9 @@ const FLAGS = {
 } as const;
 
 function setup() {
-  return convexTest(schema, modules);
+  // Most workflow tests model a signed-in user. Tests for anonymous access
+  // intentionally construct a raw convexTest instance instead.
+  return convexTest(schema, modules).withIdentity({ subject: "test-user" });
 }
 
 async function createCase(
@@ -345,6 +347,17 @@ describe("demo data", () => {
 });
 
 describe("authorization", () => {
+  it("rejects anonymous backend and AI access instead of using a shared demo owner", async () => {
+    const anonymous = convexTest(schema, modules);
+    await expect(anonymous.query(api.jaal.state, {})).rejects.toThrow(/authentication required/i);
+    await expect(
+      anonymous.action(api.ai.strategyAction, {
+        transcript: [{ author: "scammer", text: "Synthetic test message" }],
+        activeStage: "contact",
+      }),
+    ).rejects.toThrow(/authentication required/i);
+  });
+
   it("hides other owners' cases and rejects cross-owner mutations", async () => {
     const t = setup();
     const alice = t.withIdentity({ subject: "alice" });
