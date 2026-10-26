@@ -74,6 +74,7 @@ const reportSummaryValidator = v.object({
   tactics: v.string(),
   payment: v.string(),
   moments: v.array(v.object({ timestamp: v.number(), label: v.string(), text: v.string() })),
+  engineLabel: v.optional(v.string()),
 });
 const reportDataValidator = v.object({
   id: v.string(), caseId: v.string(), title: v.string(), category: scamCategoryValidator,
@@ -127,7 +128,7 @@ const schema = defineSchema(
       /** Subject from the authenticated Convex identity. */
       owner: v.string(),
       title: v.string(),
-      category: v.string(),
+      category: scamCategoryValidator,
       description: v.string(),
       notes: v.string(),
       status: v.union(
@@ -140,11 +141,7 @@ const schema = defineSchema(
         v.literal("paste"),
         v.literal("import"),
       ),
-      detectionMode: v.union(
-        v.literal("simulation"),
-        v.literal("balanced"),
-        v.literal("manual"),
-      ),
+      detectionMode: detectionModeValidator,
       flags: flagsValidator,
       currentStage: v.string(),
       createdAt: v.number(),
