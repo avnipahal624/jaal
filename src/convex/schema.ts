@@ -304,7 +304,8 @@ const schema = defineSchema(
       .index("by_owner", ["owner"])
       .index("by_owner_generated", ["owner", "generatedAt"])
       .index("by_owner_report_id", ["owner", "reportId"])
-      .index("by_investigation", ["investigationId"]),
+      .index("by_investigation", ["investigationId"])
+      .index("by_investigation_report_id", ["investigationId", "reportId"]),
 
     /** Per-user settings (appearance / investigation / simulation). */
     settings: defineTable({
