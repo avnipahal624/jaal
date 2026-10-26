@@ -243,7 +243,9 @@ const schema = defineSchema(
     }).index("by_owner", ["owner"]),
   },
   {
-    schemaValidation: false,
+    // Validate all explicitly typed fields on writes. Flexible payload fields
+    // remain isolated behind v.any() until their persisted shapes are migrated.
+    schemaValidation: true,
   },
 );
 
