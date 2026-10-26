@@ -54,6 +54,9 @@ const analysisTacticValidator = v.object({
   tacticCode: tacticIdValidator,
   displayName: v.string(),
   explanation: v.string(),
+  supportingText: v.string(),
+  supportingMessageId: v.string(),
+  detectionMethod: v.string(),
 });
 const appearanceSettingsValidator = v.object({
   theme: v.optional(v.literal("dark")),
