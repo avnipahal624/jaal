@@ -1065,7 +1065,7 @@ export const generateHash = mutation({
 
 export const verifyEvidence = mutation({
   args: { evidenceId: v.id("evidence") },
-  handler: async (ctx, { evidenceId }): Promise<"match" | "mismatch" | "error"> => {
+  handler: async (ctx, { evidenceId }): Promise<"match" | "mismatch" | "generated" | "error"> => {
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return "error";
     const owner = await requireOwner(ctx);
@@ -1092,7 +1092,7 @@ export const verifyEvidence = mutation({
         );
         await pushLog(ctx.db, inv, "success", `SHA-256 hash generated · ${doc.label}`, at);
       }
-      return "error";
+      return "generated";
     }
     const recomputed = await sha256Hex(doc.content);
     const match = recomputed.toLowerCase() === doc.integrityHash.toLowerCase();
