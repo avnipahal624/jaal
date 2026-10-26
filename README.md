@@ -5,7 +5,7 @@ JAAL Investigator is a **scam-analysis training simulation**. Every case, messag
 ### Session and data boundaries
 
 - **Account sign-in** at `/auth` uses Convex Auth. Backend queries, mutations, and AI actions require an authenticated identity and scope records to that identity.
-- **Simulation login** at `/login` is a local-only demonstration mode. Its local browser session is not authentication and does not grant access to Convex-backed records or AI provider actions.
+- **Simulation login** at `/login` is a local-only demonstration mode. Its local browser session is not authentication and does not grant access to Convex-backed records or AI provider actions. Use `/auth` for email-OTP or guest account authentication.
 - SHA-256 checks the integrity of a stored snapshot; it does not independently prove source authenticity or make a report legally evidentiary.
 - The AI provider is optional. JAAL's deterministic simulation remains available without an Anthropic key. Configure provider-side quotas and monitor usage before exposing a deployment publicly.
 
@@ -32,7 +32,7 @@ This project is set up already and running on a cloud environment, as well as a 
 
 ## Environment Variables
 
-The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_URL environment variables on the client side.
+The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_URL environment variables on the client side. Convex schema validation is enabled for explicitly typed fields; keep flexible `v.any()` payloads narrow and replace them with concrete validators as their persisted formats stabilize.
 
 The convex server has a separate set of environment variables that are accessible by the convex backend.
 
