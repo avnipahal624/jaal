@@ -371,24 +371,22 @@ describe("authorization", () => {
     const anonymous = convexTest(schema, modules);
     await expect(anonymous.query(api.jaal.state, {})).rejects.toThrow(/authentication required/i);
     await expect(
-      anonymous.action(api.ai.strategyAction, {
-        transcript: [{ author: "scammer", text: "Synthetic test message" }],
-        activeStage: "contact",
+      anonymous.action(api.actions.sendMessageWithAI, {
+        caseId: "JAAL-100",
+        text: "Synthetic test message",
       }),
     ).rejects.toThrow(/authentication required/i);
   });
 
-  it("rejects oversized AI strategy input before any provider call", async () => {
+  it("rejects oversized public workflow messages before processing", async () => {
     const t = setup();
+    await createCase(t);
     await expect(
-      t.action(api.ai.strategyAction, {
-        transcript: Array.from({ length: 21 }, () => ({
-          author: "scammer" as const,
-          text: "synthetic transcript line",
-        })),
-        activeStage: "contact",
+      t.action(api.actions.sendMessageWithAI, {
+        caseId: "JAAL-100",
+        text: "x".repeat(2_001),
       }),
-    ).rejects.toThrow(/size limit/i);
+    ).rejects.toThrow(/2,000 character limit/i);
   });
 
   it("hides other owners' cases and rejects cross-owner mutations", async () => {
