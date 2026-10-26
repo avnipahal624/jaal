@@ -35,6 +35,74 @@ const integrityStatusValidator = v.union(
   v.literal("HASH_MISMATCH"),
 );
 
+const scamCategoryValidator = v.union(v.literal("Digital arrest scam"), v.literal("UPI/payment scam"), v.literal("Phishing"), v.literal("Impersonation"), v.literal("Job scam"), v.literal("Investment scam"), v.literal("Other"));
+const detectionModeValidator = v.union(v.literal("simulation"), v.literal("balanced"), v.literal("manual"));
+const stageIdValidator = v.union(v.literal("contact"), v.literal("authority"), v.literal("fear"), v.literal("payment"), v.literal("exploit"));
+const tacticIdValidator = v.union(v.literal("authority_impersonation"), v.literal("fear_threat"), v.literal("urgency"), v.literal("payment_request"), v.literal("isolation"), v.literal("remote_access"));
+const killChainStageValidator = v.object({
+  id: stageIdValidator,
+  number: v.number(),
+  label: v.string(),
+  description: v.string(),
+  status: v.union(v.literal("pending"), v.literal("active"), v.literal("detected"), v.literal("completed")),
+  detectedAt: v.union(v.number(), v.null()),
+  messageIds: v.array(v.string()),
+  tactics: v.array(tacticIdValidator),
+  reason: v.string(),
+});
+const analysisTacticValidator = v.object({
+  tacticCode: tacticIdValidator,
+  displayName: v.string(),
+  explanation: v.string(),
+});
+const appearanceSettingsValidator = v.object({
+  theme: v.optional(v.literal("dark")),
+  density: v.optional(v.union(v.literal("compact"), v.literal("comfortable"))),
+  animationIntensity: v.optional(v.union(v.literal("subtle"), v.literal("standard"), v.literal("vivid"))),
+  reducedMotion: v.optional(v.boolean()),
+});
+const investigationSettingsValidator = v.object({
+  defaultCategory: v.optional(scamCategoryValidator),
+  defaultDetectionMode: v.optional(detectionModeValidator),
+  autoExtract: v.optional(v.boolean()),
+  autoHash: v.optional(v.boolean()),
+  aiSuggestions: v.optional(v.boolean()),
+});
+const simulationSettingsValidator = v.object({ simulatedActivity: v.optional(v.boolean()) });
+const reportSummaryValidator = v.object({
+  scenario: v.string(),
+  tactics: v.string(),
+  payment: v.string(),
+  moments: v.array(v.object({ timestamp: v.number(), label: v.string(), text: v.string() })),
+});
+const reportDataValidator = v.object({
+  id: v.string(), caseId: v.string(), title: v.string(), category: scamCategoryValidator,
+  generatedAt: v.number(), generatedBy: v.string(), simulated: v.boolean(),
+  status: v.union(v.literal("active"), v.literal("completed"), v.literal("archived")),
+  currentStage: stageIdValidator, evidenceCount: v.number(),
+  integrity: v.object({ collected: v.number(), hashed: v.number(), verified: v.number(), mismatched: v.number(), unhashed: v.number() }),
+  description: v.string(), summary: reportSummaryValidator, unknowns: v.array(v.string()),
+  transcript: v.array(v.object({ author: v.string(), text: v.string(), timestamp: v.number() })),
+  tactics: v.array(v.object({
+    tactic: tacticIdValidator, name: v.string(), timestamp: v.number(), sourceText: v.string(), explanation: v.string(),
+    messageId: v.optional(v.union(v.string(), v.null())), messageNumber: v.optional(v.union(v.number(), v.null())),
+  })),
+  stages: v.array(v.object({
+    id: stageIdValidator, number: v.number(), label: v.string(), status: v.string(),
+    detectedAt: v.union(v.number(), v.null()), reason: v.string(),
+  })),
+  evidence: v.array(v.object({
+    id: v.string(), type: v.string(), label: v.string(), value: v.string(), extractedAt: v.number(),
+    hash: v.union(v.string(), v.null()), hashStatus: v.string(),
+    review: v.object({ status: v.union(v.string(), v.null()), note: v.union(v.string(), v.null()), reviewedAt: v.union(v.number(), v.null()) }),
+    sourceMessageId: v.optional(v.union(v.string(), v.null())),
+    sourceMessageNumber: v.optional(v.union(v.number(), v.null())),
+  })),
+  timeline: v.array(v.object({ timestamp: v.number(), kind: v.string(), title: v.string(), detail: v.string() })),
+  verification: v.array(v.object({ id: v.string(), label: v.string(), hash: v.union(v.string(), v.null()), status: v.string(), note: v.string() })),
+  analystNotes: v.string(),
+});
+
 const schema = defineSchema(
   {
     // default auth tables using convex auth.
@@ -56,7 +124,7 @@ const schema = defineSchema(
     /** One investigation (case). `caseId` is the human-readable JAAL-XXX label. */
     investigations: defineTable({
       caseId: v.string(),
-      /** Identity subject of the owning user, or "demo" for simulation login. */
+      /** Subject from the authenticated Convex identity. */
       owner: v.string(),
       title: v.string(),
       category: v.string(),
@@ -89,7 +157,7 @@ const schema = defineSchema(
       cursor: v.number(),
       turnCount: v.number(),
       /** KillChainStage[] as structured JSON (content-derived). */
-      stages: v.any(),
+      stages: v.array(killChainStageValidator),
       schemaVersion: v.number(),
     })
       .index("by_owner", ["owner"])
@@ -117,7 +185,7 @@ const schema = defineSchema(
       owner: v.string(),
       messageId: v.string(),
       intent: v.string(),
-      tactics: v.any(),
+      tactics: v.array(analysisTacticValidator),
       summary: v.string(),
       reasoningSummary: v.string(),
       engineMode: v.string(),
@@ -225,8 +293,8 @@ const schema = defineSchema(
       caseId: v.string(),
       reportId: v.string(),
       reportVersion: v.number(),
-      summary: v.any(),
-      reportData: v.any(),
+      summary: v.union(v.string(), reportSummaryValidator),
+      reportData: reportDataValidator,
       generatedAt: v.number(),
       reportStatus: v.string(),
       simulated: v.boolean(),
@@ -239,15 +307,15 @@ const schema = defineSchema(
     /** Per-user settings (appearance / investigation / simulation). */
     settings: defineTable({
       owner: v.string(),
-      appearance: v.any(),
-      investigation: v.any(),
-      simulation: v.any(),
+      appearance: appearanceSettingsValidator,
+      investigation: investigationSettingsValidator,
+      simulation: simulationSettingsValidator,
       updatedAt: v.number(),
     }).index("by_owner", ["owner"]),
   },
   {
     // Validate all explicitly typed fields on writes. Flexible payload fields
-    // remain isolated behind v.any() until their persisted shapes are migrated.
+    // flexible persisted values now have explicit validators.
     schemaValidation: true,
   },
 );
