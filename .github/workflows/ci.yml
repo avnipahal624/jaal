@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Lint, typecheck, build, and test
+    runs-on: ubuntu-latest
+    env:
+      # Local code generation does not deploy functions or require secrets.
+      CONVEX_DEPLOYMENT: dev:jaal-ci
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Generate Convex API types
+        run: bunx convex codegen --typecheck disable
+      - name: Lint
+        run: bun run lint
+      - name: Build and typecheck
+        run: bun run build
+      - name: Run tests
+        run: bun run test
