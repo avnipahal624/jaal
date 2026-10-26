@@ -2,6 +2,13 @@
 
 JAAL Investigator is a **scam-analysis training simulation**. Every case, message, identifier and timestamp in the app is synthetic; no real scammers or third parties are ever contacted.
 
+### Session and data boundaries
+
+- **Account sign-in** at `/auth` uses Convex Auth. Backend queries, mutations, and AI actions require an authenticated identity and scope records to that identity.
+- **Simulation login** at `/login` is a local-only demonstration mode. Its local browser session is not authentication and does not grant access to Convex-backed records or AI provider actions.
+- SHA-256 checks the integrity of a stored snapshot; it does not independently prove source authenticity or make a report legally evidentiary.
+- The AI provider is optional. JAAL's deterministic simulation remains available without an Anthropic key. Configure provider-side quotas and monitor usage before exposing a deployment publicly.
+
 This project uses the following tech stack:
 - Vite
 - Typescript
