@@ -618,7 +618,9 @@ export async function buildRuntime(
     [...usable].sort((a, b) => b.createdAt - a.createdAt)[0] ??
     null;
 
-  const sortedMessages = [...messages].sort((a, b) => a.timestamp - b.timestamp);
+  const sortedMessages = [...messages].sort(
+    (a, b) => a.timestamp - b.timestamp || a.messageNumber - b.messageNumber,
+  );
   const runtimeMessages = bounded ? sortedMessages.slice(-100) : sortedMessages;
   const historyTruncated = bounded && (
     messages.length > 100 || evidence.length > 100 || tactics.length > 100 ||
