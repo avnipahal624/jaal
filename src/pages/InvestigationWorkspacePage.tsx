@@ -145,6 +145,11 @@ export default function InvestigationWorkspacePage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      {runtime.historyTruncated && (
+        <div role="status" className="mx-4 mt-2 border border-jcyan/30 bg-jcyan/5 px-3 py-2 font-mono text-[10px] text-jmuted">
+          Showing a recent workspace snapshot for performance. Older source records remain stored; generated reports use the full investigation history.
+        </div>
+      )}
       {/* Desktop investigation header — identity, status, engine, actions */}
       <div className="hidden lg:block">
         <WorkspaceHeader
