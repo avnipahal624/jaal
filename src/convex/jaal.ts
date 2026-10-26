@@ -12,7 +12,7 @@
  * ownership server-side and never trusts a client-claimed caseId alone.
  */
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   buildRuntime,
@@ -746,7 +746,7 @@ async function sendDecoyAndReply(
  * Called by the AI action wrapper (actions may call mutations; mutations
  * cannot call actions). Passing no override records the fallback reason.
  */
-export const applyStrategyOverride = mutation({
+export const applyStrategyOverride = internalMutation({
   args: {
     caseId: v.string(),
     override: v.optional(
@@ -1239,7 +1239,7 @@ export const generateReport = mutation({
 });
 
 /** Replace a report's summary with an LLM-written one (labeled engine). */
-export const applyReportSummary = mutation({
+export const applyReportSummary = internalMutation({
   args: {
     caseId: v.string(),
     reportId: v.string(),
