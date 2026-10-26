@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { clearDemoSession, getDemoSession, setDemoSession } from "@/lib/demoSession";
+import { clearDemoSession, setDemoSession } from "@/lib/demoSession";
 import { api as httpApi, probeBackend, tryApi, type BackendStatus } from "@/services/api";
 import {
   generateEvidenceHash,
@@ -121,16 +121,12 @@ export function JaalProvider({ children }: { children: ReactNode }) {
 
   // Local simulation login is deliberately not a backend identity. Skip all
   // remote reads until Convex Auth confirms an authenticated identity; otherwise
-  // an unauthenticated demo could read or mutate shared server data.
-  const localDemoSession = !isAuthenticated && Boolean(getDemoSession());
+  // an unauthenticated session could read or mutate shared server data.
   const remote = useQuery(
     api.jaal.state,
     isAuthenticated ? {} : "skip",
   ) as RemoteState | undefined;
   const remoteReady = isAuthenticated && remote !== undefined;
-
-  // Keep the explicit variable for clarity about the two session modes.
-  void localDemoSession;
 
   const seedDemo = useMutation(api.jaal.seedDemo);
   const createInvestigationMut = useMutation(api.jaal.createInvestigation);
