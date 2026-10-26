@@ -1,7 +1,6 @@
 import { Chip, HASH_LABEL, HASH_STYLE } from "@/components/ui/panel";
 import { copyToClipboard } from "@/utils/export";
 import { shortHash } from "@/utils/hash";
-import { cn } from "@/lib/utils";
 import {
   indicatorAccent,
   integrityKey,
