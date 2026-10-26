@@ -22,7 +22,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Generate Convex API types
-        run: bunx convex codegen
+        # Code generation is local; the placeholder selects the project config
+        # without requiring deployment credentials or pushing functions.
+        run: CONVEX_DEPLOYMENT=dev:jaal-ci bunx convex codegen
       - name: Lint
         run: bun run lint
       - name: Build and typecheck
