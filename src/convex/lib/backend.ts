@@ -231,8 +231,9 @@ export async function processMessage(
 
   const tacticDocs = await db
     .query("tactics")
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
+    .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+    .order("desc")
+    .take(500);
   const existingTactics = tacticDocs.map((t) => ({
     id: `${t.tactic}:${t.messageId ?? "case"}`,
     caseId,
@@ -251,18 +252,16 @@ export async function processMessage(
   });
 
   const newEvidenceIds: Id<"evidence">[] = [];
-  const evidenceDocs = await db
-    .query("evidence")
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-
   for (const draft of analysis.evidence) {
-    const dup = evidenceDocs.some(
-      (e) =>
-        e.evidenceType === draft.type &&
-        e.extractedValue.toLowerCase() === draft.value.toLowerCase(),
-    );
-    if (dup) continue;
+    const duplicate = await db
+      .query("evidence")
+      .withIndex("by_investigation_type_normalized", (q) =>
+        q.eq("investigationId", inv._id)
+          .eq("evidenceType", draft.type)
+          .eq("normalizedValue", draft.value.toLowerCase()),
+      )
+      .first();
+    if (duplicate) continue;
 
     // Deterministic snapshot — the exact bytes that get hashed.
     const item = toEvidenceItem(caseId, draft, {
@@ -481,8 +480,9 @@ export async function refreshStrategy(
 
   const messages = await db
     .query("messages")
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
+    .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+    .order("desc")
+    .take(100);
   const convo = messages
     .sort((a, b) => a.timestamp - b.timestamp)
     .map((m) => docToMessage(m, inv.caseId));
