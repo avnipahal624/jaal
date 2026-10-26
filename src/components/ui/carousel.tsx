@@ -88,6 +88,8 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api || !setApi) return
+    // Register the initialized carousel API with its parent component.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setApi(api)
   }, [api, setApi])
 
