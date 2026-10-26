@@ -93,6 +93,7 @@ const schema = defineSchema(
       schemaVersion: v.number(),
     })
       .index("by_owner", ["owner"])
+      .index("by_owner_activity", ["owner", "lastActivityAt"])
       .index("by_owner_case", ["owner", "caseId"]),
 
     /** Conversation messages; original content is never altered. */
@@ -231,6 +232,8 @@ const schema = defineSchema(
       simulated: v.boolean(),
     })
       .index("by_owner", ["owner"])
+      .index("by_owner_generated", ["owner", "generatedAt"])
+      .index("by_owner_report_id", ["owner", "reportId"])
       .index("by_investigation", ["investigationId"]),
 
     /** Per-user settings (appearance / investigation / simulation). */
