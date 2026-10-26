@@ -143,7 +143,7 @@ export const state = query({
 
     const sessions: Record<string, CaseRuntime> = {};
     for (const inv of invDocs) {
-      sessions[inv.caseId] = await buildRuntime(ctx.db, inv);
+      sessions[inv.caseId] = await buildRuntime(ctx.db, inv, { bounded: true });
     }
 
     const reportDocs = await ctx.db
@@ -289,7 +289,7 @@ export const investigationMeta = query({
   args: { caseId: v.string() },
   handler: async (ctx, { caseId }) => {
     const inv = await requireInvestigation(ctx, caseId);
-    const runtime = await buildRuntime(ctx.db, inv);
+    const runtime = await buildRuntime(ctx.db, inv, { bounded: true });
     return {
       title: inv.title,
       category: inv.category,
