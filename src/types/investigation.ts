@@ -123,6 +123,8 @@ export type CaseRunStatus = "running" | "paused" | "completed";
 
 export interface CaseRuntime {
   caseId: string;
+  /** True when the live workspace payload omits older records for performance. */
+  historyTruncated?: boolean;
   messages: ConversationMessage[];
   evidence: EvidenceItem[];
   tactics: DetectedTactic[];
