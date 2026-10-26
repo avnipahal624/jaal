@@ -187,15 +187,20 @@ export async function capTable(
   table: "logs" | "events",
   max: number,
 ) {
-  const total = await db
-    .query(table)
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-  if (total.length <= max) return;
-  const excess = total
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .slice(0, total.length - max);
-  for (const doc of excess) await db.delete(doc._id);
+  // Read at most max + 100 oldest rows per pass. This handles normal
+  // overflow cheaply and drains oversized legacy tables in bounded batches.
+  while (true) {
+    const oldest = await db
+      .query(table)
+      .withIndex("by_investigation_timestamp", (q) =>
+        q.eq("investigationId", inv._id),
+      )
+      .order("asc")
+      .take(max + 100);
+    if (oldest.length <= max) return;
+    const excess = oldest.slice(0, oldest.length - max);
+    for (const doc of excess) await db.delete(doc._id);
+  }
 }
 
 // ---------------------------------------------------------------------------
