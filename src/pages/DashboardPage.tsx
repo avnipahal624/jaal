@@ -65,6 +65,7 @@ export default function DashboardPage() {
     [activities],
   );
 
+  const [sessionStamp] = useState(() => formatDateTime(Date.now()))
   const activeRuntime = activeCase ? state.sessions[activeCase.id] : null;
   const activeStage =
     activeRuntime?.stages.find((s) => s.status === "active") ?? null;
@@ -80,7 +81,7 @@ export default function DashboardPage() {
       >
         <div>
           <p className="jaal-label !text-jcyan">
-            JAAL / COMMAND · {formatDateTime(Date.now())}
+            JAAL / COMMAND · {sessionStamp}
           </p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-jtext sm:text-3xl">
             Investigation launchpad
