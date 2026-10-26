@@ -77,12 +77,16 @@ async function enforceMessageRateLimit(
   db: MutationCtx["db"],
   inv: Doc<"investigations">,
 ): Promise<void> {
+  const cutoff = Date.now() - RATE_WINDOW_MS;
+  // The timestamp index makes this a bounded range read instead of loading
+  // the entire transcript for every rate-limit check.
   const recent = await db
     .query("messages")
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-  const cutoff = Date.now() - RATE_WINDOW_MS;
-  const count = recent.filter((m) => m.timestamp >= cutoff).length;
+    .withIndex("by_investigation_timestamp", (q) =>
+      q.eq("investigationId", inv._id).gte("timestamp", cutoff),
+    )
+    .take(RATE_MAX_MESSAGES);
+  const count = recent.length;
   if (count >= RATE_MAX_MESSAGES) {
     throw new Error(
       "Rate limit exceeded — wait a moment before sending more messages in this case.",
@@ -94,11 +98,14 @@ async function countMessages(
   db: MutationCtx["db"],
   inv: Doc<"investigations">,
 ): Promise<number> {
-  const docs = await db
+  // Message numbers are assigned monotonically on insertion. Read only
+  // the latest row instead of scanning the full transcript on every message.
+  const latest = await db
     .query("messages")
     .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-  return docs.length;
+    .order("desc")
+    .first();
+  return latest?.messageNumber ?? 0;
 }
 
 function nextCaseId(existing: Doc<"investigations">[]): string {
