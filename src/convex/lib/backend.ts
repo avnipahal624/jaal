@@ -42,12 +42,16 @@ export function rid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/** Identity subject of the caller; simulation users share the "demo" owner. */
+/** Resolve the authenticated owner. Local demo sessions must never become a
+ * shared backend identity: the demo experience runs entirely in local state. */
 export async function getOwner(ctx: {
   auth: { getUserIdentity(): Promise<{ subject: string } | null> };
 }): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? "demo";
+  if (!identity?.subject) {
+    throw new Error("Authentication required. Sign in to use the shared backend.");
+  }
+  return identity.subject;
 }
 
 // ---------------------------------------------------------------------------
