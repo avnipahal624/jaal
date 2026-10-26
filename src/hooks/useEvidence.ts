@@ -33,7 +33,7 @@ export function useEvidence(caseId: string | undefined) {
     [caseId, generateHash],
   );
   const verify = useCallback(
-    async (evidenceId: string): Promise<"match" | "mismatch" | "error"> =>
+    async (evidenceId: string): Promise<"match" | "mismatch" | "generated" | "error"> =>
       caseId ? verifyEvidence(caseId, evidenceId) : "error",
     [caseId, verifyEvidence],
   );

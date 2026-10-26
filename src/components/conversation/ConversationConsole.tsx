@@ -58,9 +58,13 @@ export function ConversationConsole({
   // Briefly highlight the newest message.
   useEffect(() => {
     if (!lastId) return;
-    setFreshId(lastId);
-    const t = window.setTimeout(() => setFreshId(null), 2400);
-    return () => window.clearTimeout(t);
+    // Defer the highlight state update out of the effect's synchronous phase.
+    const show = window.setTimeout(() => setFreshId(lastId), 0);
+    const clear = window.setTimeout(() => setFreshId(null), 2400);
+    return () => {
+      window.clearTimeout(show);
+      window.clearTimeout(clear);
+    };
   }, [lastId]);
 
   // Evidence → “open source message” jumps here.

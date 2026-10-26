@@ -42,12 +42,16 @@ export function rid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/** Identity subject of the caller; simulation users share the "demo" owner. */
+/** Resolve the authenticated owner. Local demo sessions must never become a
+ * shared backend identity: the demo experience runs entirely in local state. */
 export async function getOwner(ctx: {
   auth: { getUserIdentity(): Promise<{ subject: string } | null> };
 }): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? "demo";
+  if (!identity?.subject) {
+    throw new Error("Authentication required. Sign in to use the shared backend.");
+  }
+  return identity.subject;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,15 +187,20 @@ export async function capTable(
   table: "logs" | "events",
   max: number,
 ) {
-  const total = await db
-    .query(table)
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-  if (total.length <= max) return;
-  const excess = total
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .slice(0, total.length - max);
-  for (const doc of excess) await db.delete(doc._id);
+  // Read at most max + 100 oldest rows per pass. This handles normal
+  // overflow cheaply and drains oversized legacy tables in bounded batches.
+  while (true) {
+    const oldest = await db
+      .query(table)
+      .withIndex("by_investigation_timestamp", (q) =>
+        q.eq("investigationId", inv._id),
+      )
+      .order("asc")
+      .take(max + 100);
+    if (oldest.length <= max) return;
+    const excess = oldest.slice(0, oldest.length - max);
+    for (const doc of excess) await db.delete(doc._id);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,8 +231,9 @@ export async function processMessage(
 
   const tacticDocs = await db
     .query("tactics")
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
+    .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+    .order("desc")
+    .take(500);
   const existingTactics = tacticDocs.map((t) => ({
     id: `${t.tactic}:${t.messageId ?? "case"}`,
     caseId,
@@ -242,18 +252,16 @@ export async function processMessage(
   });
 
   const newEvidenceIds: Id<"evidence">[] = [];
-  const evidenceDocs = await db
-    .query("evidence")
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-
   for (const draft of analysis.evidence) {
-    const dup = evidenceDocs.some(
-      (e) =>
-        e.evidenceType === draft.type &&
-        e.extractedValue.toLowerCase() === draft.value.toLowerCase(),
-    );
-    if (dup) continue;
+    const duplicate = await db
+      .query("evidence")
+      .withIndex("by_investigation_type_normalized", (q) =>
+        q.eq("investigationId", inv._id)
+          .eq("evidenceType", draft.type)
+          .eq("normalizedValue", draft.value.toLowerCase()),
+      )
+      .first();
+    if (duplicate) continue;
 
     // Deterministic snapshot — the exact bytes that get hashed.
     const item = toEvidenceItem(caseId, draft, {
@@ -472,8 +480,9 @@ export async function refreshStrategy(
 
   const messages = await db
     .query("messages")
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
+    .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+    .order("desc")
+    .take(100);
   const convo = messages
     .sort((a, b) => a.timestamp - b.timestamp)
     .map((m) => docToMessage(m, inv.caseId));
@@ -549,32 +558,54 @@ export async function refreshStrategy(
 export async function buildRuntime(
   db: DatabaseReader | DatabaseWriter,
   inv: Doc<"investigations">,
+  options: { bounded?: boolean } = {},
 ): Promise<CaseRuntime> {
+  // The reactive workspace uses a bounded snapshot; report generation keeps
+  // full history so exports never silently omit older transcript/evidence.
+  const bounded = options.bounded ?? false;
   const [messages, evidence, tactics, events, logs, strategies] = await Promise.all([
-    db
-      .query("messages")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect(),
-    db
-      .query("evidence")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect(),
-    db
-      .query("tactics")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect(),
-    db
-      .query("events")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect(),
-    db
-      .query("logs")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect(),
-    db
-      .query("strategies")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect(),
+    bounded
+      ? db.query("messages")
+          .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(101)
+      : db.query("messages")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("evidence")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(100)
+      : db.query("evidence")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("tactics")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(100)
+      : db.query("tactics")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("events")
+          .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(51)
+      : db.query("events")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("logs")
+          .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(50)
+      : db.query("logs")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
+    bounded
+      ? db.query("strategies")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .order("desc").take(11)
+      : db.query("strategies")
+          .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
+          .collect(),
   ]);
 
   // Latest usable strategy suggestion: a pending one wins, otherwise the most
@@ -587,12 +618,20 @@ export async function buildRuntime(
     [...usable].sort((a, b) => b.createdAt - a.createdAt)[0] ??
     null;
 
-  const sortedMessages = [...messages].sort((a, b) => a.timestamp - b.timestamp);
+  const sortedMessages = [...messages].sort(
+    (a, b) => a.timestamp - b.timestamp || a.messageNumber - b.messageNumber,
+  );
+  const runtimeMessages = bounded ? sortedMessages.slice(-100) : sortedMessages;
+  const historyTruncated = bounded && (
+    messages.length > 100 || evidence.length > 100 || tactics.length > 100 ||
+    events.length > 50 || logs.length > 50
+  );
   return {
     caseId: inv.caseId,
-    messages: sortedMessages.map((m) => docToMessage(m, inv.caseId)),
-    evidence: evidence.map(docToEvidence),
-    tactics: tactics.map((t) => ({
+    messages: runtimeMessages.map((m) => docToMessage(m, inv.caseId)),
+    historyTruncated,
+    evidence: (bounded ? [...evidence].reverse().slice(-100) : evidence).map(docToEvidence),
+    tactics: (bounded ? [...tactics].reverse().slice(-100) : tactics).map((t) => ({
       id: `${t.tactic}:${t.messageId ?? "case"}`,
       caseId: inv.caseId,
       tactic: t.tactic as never,
@@ -602,13 +641,9 @@ export async function buildRuntime(
       explanation: t.explanation,
     })),
     stages: (inv.stages as KillChainStage[]) ?? createStages(),
-    logs: [...logs]
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-MAX_LOG_DOCS)
+    logs: (bounded ? [...logs].reverse().slice(-50) : [...logs].sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_LOG_DOCS))
       .map(docToLog),
-    activities: [...events]
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-MAX_EVENT_DOCS)
+    activities: (bounded ? [...events].reverse().slice(-50) : [...events].sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_EVENT_DOCS))
       .map(docToActivity),
     cursor: inv.cursor,
     turnCount: inv.turnCount,

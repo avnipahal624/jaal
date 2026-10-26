@@ -15,9 +15,16 @@
  */
 import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
 import type { EvidenceReport } from "@/types/report";
+
+async function requireAuthenticated(ctx: ActionCtx): Promise<void> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity?.subject) {
+    throw new Error("Authentication required to run JAAL workflows.");
+  }
+}
 
 interface TurnResult {
   reply: string | null;
@@ -39,23 +46,23 @@ async function tryLLMStrategy(
   const inv = await ctx.runQuery(api.jaal.investigationMeta, { caseId });
   if (!inv) return;
   try {
-    const res = await ctx.runAction(api.ai.strategyAction, {
+    const res = await ctx.runAction(internal.ai.strategyAction, {
       transcript: inv.transcript.slice(-12),
       activeStage: inv.currentStage,
     });
     if (res.suggestion) {
-      await ctx.runMutation(api.jaal.applyStrategyOverride, {
+      await ctx.runMutation(internal.jaal.applyStrategyOverride, {
         caseId,
         override: res.suggestion as Suggestion,
       });
     } else if (res.fallbackReason) {
-      await ctx.runMutation(api.jaal.applyStrategyOverride, {
+      await ctx.runMutation(internal.jaal.applyStrategyOverride, {
         caseId,
         fallbackReason: res.fallbackReason,
       });
     }
   } catch (err) {
-    await ctx.runMutation(api.jaal.applyStrategyOverride, {
+    await ctx.runMutation(internal.jaal.applyStrategyOverride, {
       caseId,
       fallbackReason: err instanceof Error ? err.message : "provider error",
     });
@@ -66,6 +73,7 @@ async function tryLLMStrategy(
 export const sendMessageWithAI = action({
   args: { caseId: v.string(), text: v.string() },
   handler: async (ctx, { caseId, text }): Promise<TurnResult> => {
+    await requireAuthenticated(ctx);
     const result: TurnResult = await ctx.runMutation(api.jaal.sendMessage, {
       caseId,
       text,
@@ -81,6 +89,7 @@ export const sendMessageWithAI = action({
 export const simulationNextWithAI = action({
   args: { caseId: v.string() },
   handler: async (ctx, { caseId }): Promise<TurnResult> => {
+    await requireAuthenticated(ctx);
     const result: TurnResult = await ctx.runMutation(api.jaal.simulationNext, {
       caseId,
     });
@@ -95,6 +104,7 @@ export const simulationNextWithAI = action({
 export const approveStrategyWithAI = action({
   args: { caseId: v.string(), editedText: v.optional(v.string()) },
   handler: async (ctx, { caseId, editedText }): Promise<TurnResult> => {
+    await requireAuthenticated(ctx);
     const result: TurnResult = await ctx.runMutation(api.jaal.approveStrategy, {
       caseId,
       editedText,
@@ -117,6 +127,7 @@ export const generateReportWithAI = action({
     generatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<EvidenceReport> => {
+    await requireAuthenticated(ctx);
     const report: EvidenceReport = await ctx.runMutation(
       api.jaal.generateReport,
       {
@@ -130,7 +141,7 @@ export const generateReportWithAI = action({
         caseId: args.caseId,
       });
       if (meta) {
-        const res = await ctx.runAction(api.ai.summaryAction, {
+        const res = await ctx.runAction(internal.ai.summaryAction, {
           title: meta.title,
           category: meta.category,
           transcript: meta.transcript.map((m: { author: string; text: string }) => ({
@@ -141,7 +152,7 @@ export const generateReportWithAI = action({
           stages: meta.stages,
         });
         if (res?.summary) {
-          await ctx.runMutation(api.jaal.applyReportSummary, {
+          await ctx.runMutation(internal.jaal.applyReportSummary, {
             caseId: args.caseId,
             reportId: report.id,
             summary: res.summary,

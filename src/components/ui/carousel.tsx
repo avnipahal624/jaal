@@ -88,11 +88,15 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api || !setApi) return
+    // Register the initialized carousel API with its parent component.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setApi(api)
   }, [api, setApi])
 
   React.useEffect(() => {
     if (!api) return
+    // Synchronize the initial selection after Embla initializes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)

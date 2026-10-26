@@ -20,7 +20,7 @@ const FLAGS = {
 } as const;
 
 function setup() {
-  return convexTest(schema, modules);
+  return convexTest(schema, modules).withIdentity({ subject: "graph-test-user" });
 }
 
 type T = ReturnType<typeof setup>;

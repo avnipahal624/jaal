@@ -31,19 +31,72 @@ import {
  * rest of the backend uses; unknown or foreign cases yield an empty graph.
  */
 
-const nodeValidator = v.object({
-  id: v.string(),
-  type: v.union(
-    v.literal("message"),
-    v.literal("indicator"),
-    v.literal("tactic"),
-    v.literal("evidence"),
-  ),
-  recordId: v.string(),
-  label: v.string(),
-  timestamp: v.number(),
-  data: v.any(),
-});
+const nodeValidator = v.union(
+  v.object({
+    id: v.string(),
+    type: v.literal("message"),
+    recordId: v.string(),
+    label: v.string(),
+    timestamp: v.number(),
+    data: v.object({
+      sender: v.union(v.literal("scammer"), v.literal("decoy"), v.literal("system")),
+      messageNumber: v.number(),
+      content: v.string(),
+      source: v.string(),
+    }),
+  }),
+  v.object({
+    id: v.string(),
+    type: v.literal("indicator"),
+    recordId: v.string(),
+    label: v.string(),
+    timestamp: v.number(),
+    data: v.object({
+      evidenceType: v.string(),
+      value: v.string(),
+      normalizedValue: v.string(),
+      extractionMethod: v.string(),
+    }),
+  }),
+  v.object({
+    id: v.string(),
+    type: v.literal("tactic"),
+    recordId: v.string(),
+    label: v.string(),
+    timestamp: v.number(),
+    data: v.object({
+      tactic: v.string(),
+      explanation: v.string(),
+      sourceText: v.string(),
+      messageId: v.union(v.string(), v.null()),
+    }),
+  }),
+  v.object({
+    id: v.string(),
+    type: v.literal("evidence"),
+    recordId: v.string(),
+    label: v.string(),
+    timestamp: v.number(),
+    data: v.object({
+      label: v.string(),
+      evidenceType: v.string(),
+      value: v.string(),
+      content: v.string(),
+      integrity: v.object({
+        algorithm: v.union(v.string(), v.null()),
+        hash: v.union(v.string(), v.null()),
+        status: v.string(),
+        hashGeneratedAt: v.union(v.number(), v.null()),
+        tampered: v.boolean(),
+      }),
+      review: v.object({
+        status: v.union(v.string(), v.null()),
+        note: v.union(v.string(), v.null()),
+        reviewedAt: v.union(v.number(), v.null()),
+      }),
+    }),
+  }),
+);
 
 const edgeValidator = v.object({
   id: v.string(),
@@ -100,22 +153,25 @@ export const getByInvestigation = query({
     const [messageDocs, tacticDocs, evidenceDocs] = await Promise.all([
       ctx.db
         .query("messages")
-        .withIndex("by_investigation", (q) =>
+        .withIndex("by_investigation_timestamp", (q) =>
           q.eq("investigationId", inv._id),
         )
-        .collect(),
+        .order("desc")
+        .take(200),
       ctx.db
         .query("tactics")
-        .withIndex("by_investigation", (q) =>
+        .withIndex("by_investigation_timestamp", (q) =>
           q.eq("investigationId", inv._id),
         )
-        .collect(),
+        .order("desc")
+        .take(200),
       ctx.db
         .query("evidence")
         .withIndex("by_investigation", (q) =>
           q.eq("investigationId", inv._id),
         )
-        .collect(),
+        .order("desc")
+        .take(200),
     ]);
 
     const nodes: GraphNode[] = [];
@@ -146,7 +202,7 @@ export const getByInvestigation = query({
     }
 
     // ---- Indicator + evidence nodes (two aspects of one evidence row) ----
-    const evidence = evidenceDocs.filter((e) => e.owner === owner);
+    const evidence = evidenceDocs.filter((e) => e.owner === owner).reverse();
     // Co-extraction groups: evidence rows sharing one resolvable source message.
     const bySourceMessage = new Map<string, string[]>();
     for (const e of evidence) {
@@ -240,7 +296,7 @@ export const getByInvestigation = query({
     }
 
     // ---- Tactic nodes + DETECTED_IN ----
-    for (const t of tacticDocs.filter((d) => d.owner === owner)) {
+    for (const t of tacticDocs.filter((d) => d.owner === owner).reverse()) {
       nodes.push({
         id: `tac:${t._id}`,
         type: "tactic",

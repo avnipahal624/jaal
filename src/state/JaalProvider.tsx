@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { clearDemoSession, setDemoSession } from "@/lib/demoSession";
 import { api as httpApi, probeBackend, tryApi, type BackendStatus } from "@/services/api";
@@ -70,7 +70,7 @@ interface JaalContextValue {
   setCaseStatus: (caseId: string, status: Investigation["status"]) => void;
   // evidence
   generateHash: (caseId: string, evidenceId: string) => Promise<void>;
-  verifyEvidence: (caseId: string, evidenceId: string) => Promise<"match" | "mismatch" | "error">;
+  verifyEvidence: (caseId: string, evidenceId: string) => Promise<"match" | "mismatch" | "generated" | "error">;
   setEvidenceContent: (caseId: string, evidenceId: string, content: string) => void;
   setEvidenceNotes: (caseId: string, evidenceId: string, notes: string) => void;
   /** Analyst review verdict — stored separately from the extraction. */
@@ -117,8 +117,16 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   const [typingMap, setTypingMap] = useState<Record<string, boolean>>({});
 
   // ---- Backend (Convex) wiring ------------------------------------------
-  const remote = useQuery(api.jaal.state) as RemoteState | undefined;
-  const remoteReady = remote !== undefined;
+  const { isAuthenticated } = useConvexAuth();
+
+  // Local simulation login is deliberately not a backend identity. Skip all
+  // remote reads until Convex Auth confirms an authenticated identity; otherwise
+  // an unauthenticated session could read or mutate shared server data.
+  const remote = useQuery(
+    api.jaal.state,
+    isAuthenticated ? {} : "skip",
+  ) as RemoteState | undefined;
+  const remoteReady = isAuthenticated && remote !== undefined;
 
   const seedDemo = useMutation(api.jaal.seedDemo);
   const createInvestigationMut = useMutation(api.jaal.createInvestigation);
@@ -732,7 +740,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   );
 
   const verifyEvidence = useCallback(
-    async (caseId: string, evidenceId: string): Promise<"match" | "mismatch" | "error"> => {
+    async (caseId: string, evidenceId: string): Promise<"match" | "mismatch" | "generated" | "error"> => {
       if (remote) {
         try {
           return await verifyEvidenceMut({ evidenceId: evidenceId as never });
@@ -744,7 +752,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       if (!item) return "error";
       if (!item.hash) {
         await generateHash(caseId, evidenceId);
-        return "error";
+        return "generated";
       }
       try {
         const result = await verifyEvidenceIntegrity(item);

@@ -7,12 +7,12 @@
  * HASH_GENERATED / KILLCHAIN_UPDATED / STRATEGY_GENERATED updates as soon as
  * a mutation commits — this replaces an SSE stream with Convex subscriptions.
  *
- * All case resources are scoped to the authenticated owner (identity subject,
- * or the shared "demo" owner for simulation logins); every mutation re-checks
- * ownership server-side and never trusts a client-claimed caseId alone.
+ * All case resources are scoped to the authenticated Convex identity. Local
+ * simulation sessions never become a shared backend identity; every case
+ * mutation re-checks ownership server-side.
  */
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   buildRuntime,
@@ -77,12 +77,16 @@ async function enforceMessageRateLimit(
   db: MutationCtx["db"],
   inv: Doc<"investigations">,
 ): Promise<void> {
+  const cutoff = Date.now() - RATE_WINDOW_MS;
+  // The timestamp index makes this a bounded range read instead of loading
+  // the entire transcript for every rate-limit check.
   const recent = await db
     .query("messages")
-    .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-  const cutoff = Date.now() - RATE_WINDOW_MS;
-  const count = recent.filter((m) => m.timestamp >= cutoff).length;
+    .withIndex("by_investigation_timestamp", (q) =>
+      q.eq("investigationId", inv._id).gte("timestamp", cutoff),
+    )
+    .take(RATE_MAX_MESSAGES);
+  const count = recent.length;
   if (count >= RATE_MAX_MESSAGES) {
     throw new Error(
       "Rate limit exceeded — wait a moment before sending more messages in this case.",
@@ -94,11 +98,14 @@ async function countMessages(
   db: MutationCtx["db"],
   inv: Doc<"investigations">,
 ): Promise<number> {
-  const docs = await db
+  // Message numbers are assigned monotonically on insertion. Read only
+  // the latest row instead of scanning the full transcript on every message.
+  const latest = await db
     .query("messages")
     .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-  return docs.length;
+    .order("desc")
+    .first();
+  return latest?.messageNumber ?? 0;
 }
 
 function nextCaseId(existing: Doc<"investigations">[]): string {
@@ -114,14 +121,16 @@ function nextCaseId(existing: Doc<"investigations">[]): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Full authoritative application state for the caller, mapped to the exact
- * shapes the existing frontend reducer produces. Reactive: clients subscribed
- * to this query update in real time as messages are processed.
+ * Bounded live workspace snapshot. Full history remains in the database and
+ * generated reports; this subscription hydrates the 50 most recently active
+ * cases' recent activity so reconnects cannot load unbounded transcripts.
  */
 export const state = query({
   args: {},
   handler: async (ctx) => {
     const owner = await requireOwner(ctx);
+    // Investigation metadata is small; keep every case discoverable while
+    // buildRuntime bounds each case's live transcript and activity payload.
     const invDocs = await ctx.db
       .query("investigations")
       .withIndex("by_owner", (q) => q.eq("owner", owner))
@@ -133,13 +142,14 @@ export const state = query({
 
     const sessions: Record<string, CaseRuntime> = {};
     for (const inv of invDocs) {
-      sessions[inv.caseId] = await buildRuntime(ctx.db, inv);
+      sessions[inv.caseId] = await buildRuntime(ctx.db, inv, { bounded: true });
     }
 
     const reportDocs = await ctx.db
       .query("reports")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .withIndex("by_owner_generated", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(50);
     const reports = reportDocs
       .map((d) => d.reportData as EvidenceReport)
       .sort((a, b) => b.generatedAt - a.generatedAt)
@@ -158,21 +168,25 @@ export const dashboard = query({
     const owner = await requireOwner(ctx);
     const invDocs = await ctx.db
       .query("investigations")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .withIndex("by_owner_activity", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(100);
     const reportDocs = await ctx.db
       .query("reports")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .withIndex("by_owner_generated", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(100);
 
     let evidenceCount = 0;
+    const evidenceCounts: Record<string, number> = {};
     for (const inv of invDocs) {
       const items = await ctx.db
         .query("evidence")
         .withIndex("by_investigation", (q) =>
           q.eq("investigationId", inv._id),
         )
-        .collect();
+        .take(500);
+      evidenceCounts[inv._id] = items.length;
       evidenceCount += items.length;
     }
 
@@ -181,7 +195,7 @@ export const dashboard = query({
       .slice(0, 6)
       .map((d) => ({
         ...docToInvestigation(d),
-        evidenceCount: 0,
+        evidenceCount: evidenceCounts[d._id] ?? 0,
       }));
 
     const recentEvents: {
@@ -194,10 +208,11 @@ export const dashboard = query({
     for (const inv of invDocs) {
       const events = await ctx.db
         .query("events")
-        .withIndex("by_investigation", (q) =>
+        .withIndex("by_investigation_timestamp", (q) =>
           q.eq("investigationId", inv._id),
         )
-        .collect();
+        .order("desc")
+        .take(20);
       for (const e of events) {
         recentEvents.push({
           caseId: e.caseId,
@@ -228,11 +243,10 @@ export const listReports = query({
     const owner = await requireOwner(ctx);
     const docs = await ctx.db
       .query("reports")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
-    return docs
-      .map((d) => d.reportData as EvidenceReport)
-      .sort((a, b) => b.generatedAt - a.generatedAt);
+      .withIndex("by_owner_generated", (q) => q.eq("owner", owner))
+      .order("desc")
+      .take(100);
+    return docs.map((d) => d.reportData as EvidenceReport);
   },
 });
 
@@ -240,11 +254,12 @@ export const getReport = query({
   args: { reportId: v.string() },
   handler: async (ctx, { reportId }) => {
     const owner = await requireOwner(ctx);
-    const docs = await ctx.db
+    const doc = await ctx.db
       .query("reports")
-      .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
-    const doc = docs.find((d) => d.reportId === reportId);
+      .withIndex("by_owner_report_id", (q) =>
+        q.eq("owner", owner).eq("reportId", reportId),
+      )
+      .first();
     return doc ? (doc.reportData as EvidenceReport) : null;
   },
 });
@@ -276,7 +291,7 @@ export const investigationMeta = query({
   args: { caseId: v.string() },
   handler: async (ctx, { caseId }) => {
     const inv = await requireInvestigation(ctx, caseId);
-    const runtime = await buildRuntime(ctx.db, inv);
+    const runtime = await buildRuntime(ctx.db, inv, { bounded: true });
     return {
       title: inv.title,
       category: inv.category,
@@ -345,7 +360,11 @@ export const createInvestigation = mutation({
   args: {
     caseId: v.optional(v.string()),
     title: v.string(),
-    category: v.string(),
+    category: v.union(
+      v.literal("Digital arrest scam"), v.literal("UPI/payment scam"),
+      v.literal("Phishing"), v.literal("Impersonation"), v.literal("Job scam"),
+      v.literal("Investment scam"), v.literal("Other"),
+    ),
     description: v.string(),
     notes: v.optional(v.string()),
     source: v.union(
@@ -367,11 +386,20 @@ export const createInvestigation = mutation({
     transcript: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    if (
+      args.title.trim().length === 0 || args.title.length > 200 ||
+      args.description.length > 3_000 ||
+      (args.notes?.length ?? 0) > 5_000 ||
+      (args.transcript?.length ?? 0) > 100_000 ||
+      (args.caseId?.length ?? 0) > 64
+    ) {
+      throw new Error("Investigation input exceeds the supported size limits.");
+    }
     const owner = await requireOwner(ctx);
     const existing = await ctx.db
       .query("investigations")
       .withIndex("by_owner", (q) => q.eq("owner", owner))
-      .collect();
+      .take(500);
     let caseId = args.caseId ?? nextCaseId(existing);
     if (existing.some((i) => i.caseId === caseId)) {
       caseId = nextCaseId(existing);
@@ -420,6 +448,9 @@ export const createInvestigation = mutation({
     // Imported / pasted transcripts are indexed as messages + evidence.
     if (args.transcript?.trim()) {
       const lines = args.transcript.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length > 500) {
+        throw new Error("Transcript import is limited to 500 lines.");
+      }
       let stamp = 0;
       let number = 0;
       for (const line of lines) {
@@ -536,11 +567,12 @@ async function generateReportDoc(
     id: opts.reportId ?? built.id,
   };
 
-  const existing = await db
+  const latestReport = await db
     .query("reports")
     .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-    .collect();
-  const version = existing.length + 1;
+    .order("desc")
+    .first();
+  const version = (latestReport?.reportVersion ?? 0) + 1;
 
   await db.insert("reports", {
     investigationId: inv._id,
@@ -548,7 +580,7 @@ async function generateReportDoc(
     caseId: inv.caseId,
     reportId: report.id,
     reportVersion: version,
-    summary: report.summary as unknown,
+    summary: report.summary,
     reportData: report,
     generatedAt: report.generatedAt,
     reportStatus: "GENERATED",
@@ -735,7 +767,7 @@ async function sendDecoyAndReply(
  * Called by the AI action wrapper (actions may call mutations; mutations
  * cannot call actions). Passing no override records the fallback reason.
  */
-export const applyStrategyOverride = mutation({
+export const applyStrategyOverride = internalMutation({
   args: {
     caseId: v.string(),
     override: v.optional(
@@ -764,18 +796,16 @@ export const applyStrategyOverride = mutation({
       .withIndex("by_investigation_status", (q) =>
         q.eq("investigationId", inv._id).eq("status", "pending"),
       )
-      .collect();
+      .take(10);
     for (const doc of pending) {
       await ctx.db.patch(doc._id, { status: "superseded" });
     }
     const messages = await ctx.db
       .query("messages")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect();
-    const lastScammer = [...messages]
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .reverse()
-      .find((m) => m.sender === "scammer");
+      .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+      .order("desc")
+      .take(20);
+    const lastScammer = messages.find((m) => m.sender === "scammer");
     await ctx.db.insert("strategies", {
       investigationId: inv._id,
       owner: inv.owner,
@@ -805,6 +835,7 @@ export const sendMessage = mutation({
     text: v.string(),
   },
   handler: async (ctx, { caseId, text }) => {
+    if (text.length > 2_000) throw new Error("Message exceeds the 2,000 character limit.");
     const trimmed = text.trim();
     if (!trimmed) return { reply: null, completed: false, exhausted: true };
     const inv = await requireInvestigation(ctx, caseId);
@@ -884,6 +915,9 @@ export const ingestMessages = mutation({
     ),
   },
   handler: async (ctx, { caseId, messages }) => {
+    if (messages.length > 500 || messages.some((m) => m.content.length > 5_000)) {
+      throw new Error("Transcript import exceeds the supported size limits (500 messages, 5,000 characters each).");
+    }
     const inv = await requireInvestigation(ctx, caseId);
     let count = 0;
     for (const m of messages) {
@@ -908,6 +942,9 @@ export const approveStrategy = mutation({
     editedText: v.optional(v.string()),
   },
   handler: async (ctx, { caseId, editedText }) => {
+    if ((editedText?.length ?? 0) > 2_000) {
+      throw new Error("Strategy text exceeds the 2,000 character limit.");
+    }
     const inv = await requireInvestigation(ctx, caseId);
     const pending = await ctx.db
       .query("strategies")
@@ -932,7 +969,7 @@ export const dismissStrategy = mutation({
       .withIndex("by_investigation_status", (q) =>
         q.eq("investigationId", inv._id).eq("status", "pending"),
       )
-      .collect();
+      .take(10);
     for (const doc of pending) {
       await ctx.db.patch(doc._id, { status: "dismissed" });
     }
@@ -1058,7 +1095,7 @@ export const generateHash = mutation({
 
 export const verifyEvidence = mutation({
   args: { evidenceId: v.id("evidence") },
-  handler: async (ctx, { evidenceId }): Promise<"match" | "mismatch" | "error"> => {
+  handler: async (ctx, { evidenceId }): Promise<"match" | "mismatch" | "generated" | "error"> => {
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return "error";
     const owner = await requireOwner(ctx);
@@ -1085,7 +1122,7 @@ export const verifyEvidence = mutation({
         );
         await pushLog(ctx.db, inv, "success", `SHA-256 hash generated · ${doc.label}`, at);
       }
-      return "error";
+      return "generated";
     }
     const recomputed = await sha256Hex(doc.content);
     const match = recomputed.toLowerCase() === doc.integrityHash.toLowerCase();
@@ -1129,6 +1166,9 @@ export const verifyEvidence = mutation({
 export const setEvidenceContent = mutation({
   args: { evidenceId: v.id("evidence"), content: v.string() },
   handler: async (ctx, { evidenceId, content }) => {
+    if (content.length > 20_000) {
+      throw new Error("Evidence content exceeds the 20,000 character limit.");
+    }
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return;
     const owner = await requireOwner(ctx);
@@ -1149,6 +1189,9 @@ export const setEvidenceContent = mutation({
 export const setEvidenceNotes = mutation({
   args: { evidenceId: v.id("evidence"), notes: v.string() },
   handler: async (ctx, { evidenceId, notes }) => {
+    if (notes.length > 5_000) {
+      throw new Error("Evidence notes exceed the 5,000 character limit.");
+    }
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return;
     const owner = await requireOwner(ctx);
@@ -1173,6 +1216,9 @@ export const reviewEvidence = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, { evidenceId, status, note }) => {
+    if ((note?.length ?? 0) > 2_000) {
+      throw new Error("Review note exceeds the 2,000 character limit.");
+    }
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return;
     const owner = await requireOwner(ctx);
@@ -1228,7 +1274,7 @@ export const generateReport = mutation({
 });
 
 /** Replace a report's summary with an LLM-written one (labeled engine). */
-export const applyReportSummary = mutation({
+export const applyReportSummary = internalMutation({
   args: {
     caseId: v.string(),
     reportId: v.string(),
@@ -1237,11 +1283,12 @@ export const applyReportSummary = mutation({
   },
   handler: async (ctx, { caseId, reportId, summary, engineMode }) => {
     const inv = await requireInvestigation(ctx, caseId);
-    const docs = await ctx.db
+    const doc = await ctx.db
       .query("reports")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect();
-    const doc = docs.find((d) => d.reportId === reportId);
+      .withIndex("by_investigation_report_id", (q) =>
+        q.eq("investigationId", inv._id).eq("reportId", reportId),
+      )
+      .first();
     if (!doc) return;
     const data = doc.reportData as EvidenceReport;
     await ctx.db.patch(doc._id, {
@@ -1272,9 +1319,26 @@ export const applyReportSummary = mutation({
 
 export const updateSettings = mutation({
   args: {
-    appearance: v.optional(v.any()),
-    investigation: v.optional(v.any()),
-    simulation: v.optional(v.any()),
+    appearance: v.optional(v.object({
+      theme: v.optional(v.literal("dark")),
+      density: v.optional(v.union(v.literal("compact"), v.literal("comfortable"))),
+      animationIntensity: v.optional(v.union(v.literal("subtle"), v.literal("standard"), v.literal("vivid"))),
+      reducedMotion: v.optional(v.boolean()),
+    })),
+    investigation: v.optional(v.object({
+      defaultCategory: v.optional(v.union(
+        v.literal("Digital arrest scam"), v.literal("UPI/payment scam"),
+        v.literal("Phishing"), v.literal("Impersonation"), v.literal("Job scam"),
+        v.literal("Investment scam"), v.literal("Other"),
+      )),
+      defaultDetectionMode: v.optional(v.union(v.literal("simulation"), v.literal("balanced"), v.literal("manual"))),
+      autoExtract: v.optional(v.boolean()),
+      autoHash: v.optional(v.boolean()),
+      aiSuggestions: v.optional(v.boolean()),
+    })),
+    simulation: v.optional(v.object({
+      simulatedActivity: v.optional(v.boolean()),
+    })),
   },
   handler: async (ctx, args) => {
     const owner = await requireOwner(ctx);

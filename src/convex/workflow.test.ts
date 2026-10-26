@@ -17,7 +17,9 @@ const FLAGS = {
 } as const;
 
 function setup() {
-  return convexTest(schema, modules);
+  // Most workflow tests model a signed-in user. Tests for anonymous access
+  // intentionally construct a raw convexTest instance instead.
+  return convexTest(schema, modules).withIdentity({ subject: "test-user" });
 }
 
 async function createCase(
@@ -209,6 +211,26 @@ describe("conversation processing", () => {
 });
 
 describe("evidence integrity", () => {
+  it("reports baseline hash generation separately from a verification result", async () => {
+    const t = setup();
+    await t.mutation(api.jaal.updateSettings, {
+      investigation: { autoHash: false },
+    });
+    await createCase(t);
+    await t.mutation(api.jaal.sendMessage, {
+      caseId: "JAAL-100",
+      text: "Deposit ₹25,000 to continue verification.",
+    });
+    const rt = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const ev = rt.evidence.find((e) => e.type === "payment_request")!;
+    expect(ev.hash).toBeNull();
+
+    const outcome = await t.mutation(api.jaal.verifyEvidence, {
+      evidenceId: ev.id as never,
+    });
+    expect(outcome).toBe("generated");
+  });
+
   it("verifies a match, then detects tampering as a mismatch", async () => {
     const t = setup();
     await createCase(t);
@@ -345,6 +367,28 @@ describe("demo data", () => {
 });
 
 describe("authorization", () => {
+  it("rejects anonymous backend and AI access instead of using a shared demo owner", async () => {
+    const anonymous = convexTest(schema, modules);
+    await expect(anonymous.query(api.jaal.state, {})).rejects.toThrow(/authentication required/i);
+    await expect(
+      anonymous.action(api.actions.sendMessageWithAI, {
+        caseId: "JAAL-100",
+        text: "Synthetic test message",
+      }),
+    ).rejects.toThrow(/authentication required/i);
+  });
+
+  it("rejects oversized public workflow messages before processing", async () => {
+    const t = setup();
+    await createCase(t);
+    await expect(
+      t.action(api.actions.sendMessageWithAI, {
+        caseId: "JAAL-100",
+        text: "x".repeat(2_001),
+      }),
+    ).rejects.toThrow(/2,000 character limit/i);
+  });
+
   it("hides other owners' cases and rejects cross-owner mutations", async () => {
     const t = setup();
     const alice = t.withIdentity({ subject: "alice" });

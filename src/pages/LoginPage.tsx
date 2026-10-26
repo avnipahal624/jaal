@@ -53,10 +53,8 @@ export default function LoginPage() {
       setError("Enter a valid operator email address.");
       return;
     }
-    if (password.length < 4) {
-      setError("Password must be at least 4 characters.");
-      return;
-    }
+    // This is a local-only demo identity; the passphrase is never validated
+    // or sent anywhere. Use /auth for real account authentication.
     setLoading("login");
     await new Promise((r) => setTimeout(r, 700));
     if (remember) localStorage.setItem(REMEMBER_KEY, email);
@@ -153,7 +151,7 @@ export default function LoginPage() {
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="email" className="jaal-label">
-                  Operator email
+                  Demo operator email
                 </Label>
                 <Input
                   id="email"
@@ -190,6 +188,9 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
+              <p className="text-[10px] leading-relaxed text-jmuted/70">
+                Demo-only field. It is not checked, stored, or transmitted.
+              </p>
 
               <div className="flex items-center justify-between">
                 <label className="flex cursor-pointer items-center gap-2 text-xs text-jmuted">
@@ -222,7 +223,7 @@ export default function LoginPage() {
                 ) : (
                   <ArrowRight className="size-4" />
                 )}
-                {loading === "login" ? "Authenticating…" : "Login"}
+                {loading === "login" ? "Starting local session…" : "Start local session"}
               </Button>
             </form>
 
