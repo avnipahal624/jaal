@@ -129,13 +129,12 @@ export const state = query({
   args: {},
   handler: async (ctx) => {
     const owner = await requireOwner(ctx);
-    // Keep the reactive bootstrap bounded. Case detail remains stored in full;
-    // the workspace bootstrap loads the 50 most recently active cases.
+    // Investigation metadata is small; keep every case discoverable while
+    // buildRuntime bounds each case's live transcript and activity payload.
     const invDocs = await ctx.db
       .query("investigations")
-      .withIndex("by_owner_activity", (q) => q.eq("owner", owner))
-      .order("desc")
-      .take(50);
+      .withIndex("by_owner", (q) => q.eq("owner", owner))
+      .collect();
 
     const investigations = invDocs
       .map(docToInvestigation)
