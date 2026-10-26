@@ -106,7 +106,9 @@ const schema = defineSchema(
       source: v.string(),
       timestamp: v.number(),
       status: v.optional(v.string()),
-    }).index("by_investigation", ["investigationId"]),
+    })
+      .index("by_investigation", ["investigationId"])
+      .index("by_investigation_timestamp", ["investigationId", "timestamp"]),
 
     /** Per-message tactic analysis results (structured JSON). */
     analyses: defineTable({
@@ -176,7 +178,9 @@ const schema = defineSchema(
       title: v.string(),
       detail: v.string(),
       timestamp: v.number(),
-    }).index("by_investigation", ["investigationId"]),
+    })
+      .index("by_investigation", ["investigationId"])
+      .index("by_investigation_timestamp", ["investigationId", "timestamp"]),
 
     /** Log lines (info/warn/success/error) for the console streams. */
     logs: defineTable({
@@ -186,7 +190,9 @@ const schema = defineSchema(
       level: v.string(),
       message: v.string(),
       timestamp: v.number(),
-    }).index("by_investigation", ["investigationId"]),
+    })
+      .index("by_investigation", ["investigationId"])
+      .index("by_investigation_timestamp", ["investigationId", "timestamp"]),
 
     /** AI investigation strategy suggestions (pending = shown to operator). */
     strategies: defineTable({
