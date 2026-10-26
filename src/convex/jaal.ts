@@ -577,7 +577,7 @@ async function generateReportDoc(
     caseId: inv.caseId,
     reportId: report.id,
     reportVersion: version,
-    summary: report.summary as unknown,
+    summary: report.summary,
     reportData: report,
     generatedAt: report.generatedAt,
     reportStatus: "GENERATED",
