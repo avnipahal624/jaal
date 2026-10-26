@@ -19,6 +19,13 @@ import { api } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
 import type { EvidenceReport } from "@/types/report";
 
+async function requireAuthenticated(ctx: ActionCtx): Promise<void> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity?.subject) {
+    throw new Error("Authentication required to run JAAL workflows.");
+  }
+}
+
 interface TurnResult {
   reply: string | null;
   completed: boolean;
@@ -66,6 +73,7 @@ async function tryLLMStrategy(
 export const sendMessageWithAI = action({
   args: { caseId: v.string(), text: v.string() },
   handler: async (ctx, { caseId, text }): Promise<TurnResult> => {
+    await requireAuthenticated(ctx);
     const result: TurnResult = await ctx.runMutation(api.jaal.sendMessage, {
       caseId,
       text,
@@ -81,6 +89,7 @@ export const sendMessageWithAI = action({
 export const simulationNextWithAI = action({
   args: { caseId: v.string() },
   handler: async (ctx, { caseId }): Promise<TurnResult> => {
+    await requireAuthenticated(ctx);
     const result: TurnResult = await ctx.runMutation(api.jaal.simulationNext, {
       caseId,
     });
@@ -95,6 +104,7 @@ export const simulationNextWithAI = action({
 export const approveStrategyWithAI = action({
   args: { caseId: v.string(), editedText: v.optional(v.string()) },
   handler: async (ctx, { caseId, editedText }): Promise<TurnResult> => {
+    await requireAuthenticated(ctx);
     const result: TurnResult = await ctx.runMutation(api.jaal.approveStrategy, {
       caseId,
       editedText,
@@ -117,6 +127,7 @@ export const generateReportWithAI = action({
     generatedAt: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<EvidenceReport> => {
+    await requireAuthenticated(ctx);
     const report: EvidenceReport = await ctx.runMutation(
       api.jaal.generateReport,
       {
