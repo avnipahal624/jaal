@@ -9,5 +9,5 @@ declare const fullApi: ApiFromModules<{
   jaal: typeof jaal;
 }>;
 
-export declare const api: FilterApi<typeof fullApi, FunctionReference<any, "public">>;
-export declare const internal: FilterApi<typeof fullApi, FunctionReference<any, "internal">>;
+export declare const api: FilterApi<typeof fullApi, FunctionReference<"query" | "mutation" | "action", "public">>;
+export declare const internal: FilterApi<typeof fullApi, FunctionReference<"query" | "mutation" | "action", "internal">>;
