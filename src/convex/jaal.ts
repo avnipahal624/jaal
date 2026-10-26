@@ -185,7 +185,7 @@ export const dashboard = query({
         .withIndex("by_investigation", (q) =>
           q.eq("investigationId", inv._id),
         )
-        .collect();
+        .take(500);
       evidenceCount += items.length;
     }
 
@@ -207,10 +207,11 @@ export const dashboard = query({
     for (const inv of invDocs) {
       const events = await ctx.db
         .query("events")
-        .withIndex("by_investigation", (q) =>
+        .withIndex("by_investigation_timestamp", (q) =>
           q.eq("investigationId", inv._id),
         )
-        .collect();
+        .order("desc")
+        .take(20);
       for (const e of events) {
         recentEvents.push({
           caseId: e.caseId,
@@ -786,18 +787,16 @@ export const applyStrategyOverride = internalMutation({
       .withIndex("by_investigation_status", (q) =>
         q.eq("investigationId", inv._id).eq("status", "pending"),
       )
-      .collect();
+      .take(10);
     for (const doc of pending) {
       await ctx.db.patch(doc._id, { status: "superseded" });
     }
     const messages = await ctx.db
       .query("messages")
-      .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
-      .collect();
-    const lastScammer = [...messages]
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .reverse()
-      .find((m) => m.sender === "scammer");
+      .withIndex("by_investigation_timestamp", (q) => q.eq("investigationId", inv._id))
+      .order("desc")
+      .take(20);
+    const lastScammer = messages.find((m) => m.sender === "scammer");
     await ctx.db.insert("strategies", {
       investigationId: inv._id,
       owner: inv.owner,
@@ -958,7 +957,7 @@ export const dismissStrategy = mutation({
       .withIndex("by_investigation_status", (q) =>
         q.eq("investigationId", inv._id).eq("status", "pending"),
       )
-      .collect();
+      .take(10);
     for (const doc of pending) {
       await ctx.db.patch(doc._id, { status: "dismissed" });
     }
