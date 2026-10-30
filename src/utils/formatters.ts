@@ -65,3 +65,22 @@ export function truncate(text: string, size = 80): string {
 export function pluralize(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
+
+/**
+ * Mask a sensitive-looking indicator for display.
+ *
+ * Keeps the trailing characters so an investigator can still tell two leads
+ * apart at a glance, without the full value being readable over a shoulder.
+ * The bullet run is capped so the mask does not leak the exact length.
+ *
+ * This is a display/privacy control, NOT access control: the full value stays
+ * in the case record and copying still returns it. Reveal is always an
+ * explicit, per-item user action.
+ */
+export function maskValue(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= 4) return "•".repeat(4);
+  const visible = trimmed.slice(-4);
+  const hidden = "•".repeat(Math.min(trimmed.length - 4, 16));
+  return `${hidden}${visible}`;
+}

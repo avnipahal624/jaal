@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { Outlet } from "react-router";import { SidebarContent } from "./Sidebar";
 import { TopBar } from "./TopBar";
+import { DemoGuide } from "@/components/demo/DemoGuide";
 
 /**
  * Persistent application shell: collapsible sidebar (icon rail) on desktop,
@@ -65,6 +66,9 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      {/* Guided 90-second demo walkthrough (see components/demo/DemoGuide) */}
+      <DemoGuide />
     </div>
   );
 }

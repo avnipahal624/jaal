@@ -11,21 +11,25 @@ import { Chip, HASH_LABEL, HASH_STYLE } from "@/components/ui/panel";
 import { EVIDENCE_ICON } from "./EvidenceCard";
 import { useJaal } from "@/state/JaalProvider";
 import type { EvidenceItem } from "@/types/evidence";
-import { formatDateTime } from "@/utils/formatters";
+import { formatDateTime, maskValue } from "@/utils/formatters";
 import { copyToClipboard } from "@/utils/export";
-import { shortHash } from "@/utils/hash";
+import { sha256Hex, shortHash } from "@/utils/hash";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { integrityKey, reviewKey, statusStyle } from "@/theme/status";
+import { integrityKey, statusStyle } from "@/theme/status";
 import {
   AlertTriangle,
   CheckCircle2,
   ClipboardCopy,
+  Eye,
+  EyeOff,
   ExternalLink,
   FileWarning,
   Fingerprint,
   History,
   Loader2,
+  Maximize2,
+  Minimize2,
   Pencil,
   ShieldCheck,
   XCircle,
@@ -61,11 +65,20 @@ export function EvidenceDrawer({
     reviewEvidence,
   } = useJaal();
   const [busy, setBusy] = useState<null | "hash" | "verify" | "rebaseline">(null);
+  // Extracted values are masked by default; reveal is an explicit action.
+  const [revealed, setRevealed] = useState(false);
   const [rebaselineOpen, setRebaselineOpen] = useState(false);
   const [rebaselineReason, setRebaselineReason] = useState("");
   const [result, setResult] = useState<
     null | "match" | "mismatch" | "generated" | "error"
   >(null);
+  // Baseline-vs-current digests, populated only by a real verification run.
+  const [compare, setCompare] = useState<null | {
+    baseline: string;
+    current: string;
+    match: boolean;
+  }>(null);
+  const [hashExpanded, setHashExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftContent, setDraftContent] = useState("");
   const [notes, setNotes] = useState("");
@@ -74,6 +87,9 @@ export function EvidenceDrawer({
   useEffect(() => {
     if (item) {
       setResult(null);
+      setRevealed(false);
+      setCompare(null);
+      setHashExpanded(false);
       setEditing(false);
       setDraftContent(item.content);
       setNotes(item.notes);
@@ -106,6 +122,22 @@ export function EvidenceDrawer({
     const outcome = await verifyEvidence(caseId, item.id);
     setBusy(null);
     setResult(outcome);
+    if (outcome === "match" || outcome === "mismatch") {
+      // Same sha256Hex helper and the same `content` field the backend hashed,
+      // so the two digests below are genuinely comparable.
+      try {
+        const current = await sha256Hex(item.content);
+        setCompare({
+          baseline: item.hash ?? "",
+          current,
+          match: outcome === "match",
+        });
+      } catch {
+        setCompare(null);
+      }
+    } else {
+      setCompare(null);
+    }
     if (outcome === "generated") {
       toast.info(
         "No recorded hash existed — one was generated from current content. Independent verification has not yet been performed.",
@@ -166,19 +198,40 @@ export function EvidenceDrawer({
           <div>
             <div className="flex items-center justify-between">
               <p className="jaal-label">Full extracted value</p>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 text-jmuted hover:text-jcyan"
-                onClick={() => copy(item.value, "Value")}
-                title="Copy value"
-              >
-                <ClipboardCopy className="size-3.5" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-jmuted hover:text-jcyan"
+                  onClick={() => setRevealed((r) => !r)}
+                  aria-pressed={revealed}
+                  title={revealed ? "Hide value" : "Reveal value"}
+                >
+                  {revealed ? (
+                    <EyeOff className="size-3.5" />
+                  ) : (
+                    <Eye className="size-3.5" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-jmuted hover:text-jcyan"
+                  onClick={() => copy(item.value, "Value")}
+                  title="Copy value"
+                >
+                  <ClipboardCopy className="size-3.5" />
+                </Button>
+              </div>
             </div>
             <p className="mt-1 break-all border border-jborder/70 bg-jsurface px-3 py-2 font-mono text-sm text-jcyan">
-              {item.value}
+              {revealed ? item.value : maskValue(item.value)}
             </p>
+            {!revealed && (
+              <p className="mt-1 font-mono text-[9px] uppercase tracking-widest text-jmuted/60">
+                masked — use the eye control to reveal
+              </p>
+            )}
             <p className="mt-1.5 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-widest text-jamber">
               <AlertTriangle className="size-3" /> synthetic demo identifier —
               not verified against any real-world record
@@ -224,17 +277,41 @@ export function EvidenceDrawer({
             {item.hash ? (
               <div className="mt-2">
                 <div className="flex items-center justify-between gap-2 border border-jborder/60 bg-background px-2.5 py-1.5">
-                  <code className="truncate font-mono text-[10px] text-jteal">
+                  <code
+                    onClick={() => setHashExpanded((v) => !v)}
+                    title={hashExpanded ? "Collapse hash" : "Expand full hash"}
+                    className={cn(
+                      "min-w-0 cursor-pointer select-text font-mono text-[10px] text-jteal",
+                      hashExpanded ? "break-all" : "truncate",
+                    )}
+                  >
                     {item.hash}
                   </code>
-                  <button
-                    type="button"
-                    onClick={() => copy(item.hash!, "Hash")}
-                    className="shrink-0 text-jmuted transition-colors hover:text-jcyan"
-                    title="Copy hash"
-                  >
-                    <ClipboardCopy className="size-3.5" />
-                  </button>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setHashExpanded((v) => !v)}
+                      aria-label={hashExpanded ? "Collapse hash" : "Expand full hash"}
+                      aria-expanded={hashExpanded}
+                      className="text-jmuted transition-colors hover:text-jcyan"
+                      title={hashExpanded ? "Collapse" : "Expand full 64-character digest"}
+                    >
+                      {hashExpanded ? (
+                        <Minimize2 className="size-3.5" />
+                      ) : (
+                        <Maximize2 className="size-3.5" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => copy(item.hash!, "Hash")}
+                      className="text-jmuted transition-colors hover:text-jcyan"
+                      title="Copy hash"
+                      aria-label="Copy hash"
+                    >
+                      <ClipboardCopy className="size-3.5" />
+                    </button>
+                  </span>
                 </div>
                 <p className="mt-1 font-mono text-[9px] text-jmuted/70">
                   recorded {item.hashGeneratedAt ? formatDateTime(item.hashGeneratedAt) : "—"} ·{" "}
@@ -376,6 +453,64 @@ export function EvidenceDrawer({
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Baseline vs current — only shown after a real verification run */}
+            {compare && (
+              <div
+                className={cn(
+                  "mt-3 border p-2.5",
+                  compare.match
+                    ? "border-jgreen/50 bg-jgreen/[0.07]"
+                    : "border-jred/50 bg-jred/[0.07]",
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="jaal-label">Verification comparison</p>
+                  <span
+                    className={cn(
+                      "border px-1.5 py-px font-mono text-[9px] uppercase tracking-widest",
+                      compare.match
+                        ? "border-jgreen/50 bg-jgreen/10 text-jgreen"
+                        : "border-jred/50 bg-jred/10 text-jred",
+                    )}
+                  >
+                    {compare.match ? "digests match" : "digests differ"}
+                  </span>
+                </div>
+
+                <div className="mt-2 grid gap-2">
+                  <div>
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-jmuted/70">
+                      Recorded baseline
+                    </p>
+                    <code className="mt-0.5 block break-all border border-jborder/60 bg-background px-2 py-1 font-mono text-[10px] leading-relaxed text-jteal">
+                      {compare.baseline || "—"}
+                    </code>
+                  </div>
+                  <div>
+                    <p className="font-mono text-[9px] uppercase tracking-widest text-jmuted/70">
+                      Hash of current content
+                    </p>
+                    <code
+                      className={cn(
+                        "mt-0.5 block break-all border bg-background px-2 py-1 font-mono text-[10px] leading-relaxed",
+                        compare.match
+                          ? "border-jgreen/40 text-jgreen"
+                          : "border-jred/40 text-jred",
+                      )}
+                    >
+                      {compare.current}
+                    </code>
+                  </div>
+                </div>
+
+                <p className="mt-2 text-[10px] leading-relaxed text-jmuted/80">
+                  {compare.match
+                    ? "Both digests are identical, so the recorded bytes are unchanged since the baseline was taken. This says nothing about whether the identifier is genuine or admissible."
+                    : "The digests differ — the stored content changed after the baseline was recorded. The original baseline is preserved; re-baselining requires a recorded reason."}
+                </p>
+              </div>
+            )}
 
             {/* Integrity demo: modify content and re-verify */}
             <div className="mt-3 border-t border-jborder/60 pt-3">

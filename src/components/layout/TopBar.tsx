@@ -90,6 +90,14 @@ export function TopBar({ onOpenMenu }: { onOpenMenu: () => void }) {
             {pageTitle}
           </p>
         </div>
+        {/* Persistent, never-hide disclosure: everything here is simulated. */}
+        <span
+          title="Simulated interactions only. JAAL does not autonomously contact real scammers, phone numbers, WhatsApp accounts or payment accounts, and never sends real money or collects real credentials."
+          className="flex shrink-0 items-center gap-1.5 border border-jamber/50 bg-jamber/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-jamber"
+        >
+          <span className="size-1.5 shrink-0 bg-jamber jaal-pulse" />
+          Simulation mode
+        </span>
         {activeCase && (
           <div className="flex min-w-0 items-center gap-2 border border-jamber/40 bg-jamber/10 px-2 py-1">
             <span className="size-1.5 shrink-0 bg-jamber jaal-pulse" />

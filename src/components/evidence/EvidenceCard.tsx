@@ -1,7 +1,6 @@
 import { Chip, HASH_LABEL, HASH_STYLE } from "@/components/ui/panel";
 import { copyToClipboard } from "@/utils/export";
 import { shortHash } from "@/utils/hash";
-import { cn } from "@/lib/utils";
 import {
   indicatorAccent,
   integrityKey,
@@ -10,10 +9,12 @@ import {
   statusStyle,
 } from "@/theme/status";
 import type { EvidenceItem } from "@/types/evidence";
-import { formatClock } from "@/utils/formatters";
+import { formatClock, maskValue } from "@/utils/formatters";
 import {
   Check,
   Copy,
+  Eye,
+  EyeOff,
   ExternalLink,
   Fingerprint,
   Link2,
@@ -58,6 +59,9 @@ export function EvidenceCard({
   sourceNumber?: number;
 }) {
   const [copied, setCopied] = useState(false);
+  // Values are masked by default — reveal is an explicit per-item action.
+  const [revealed, setRevealed] = useState(false);
+  const shown = revealed ? item.value : maskValue(item.value);
   const Icon = EVIDENCE_ICON[item.type] ?? Fingerprint;
 
   const copy = async (e: React.MouseEvent) => {
@@ -89,8 +93,11 @@ export function EvidenceCard({
               style={dotStyle(item.hashStatus)}
             />
           </span>
-          <span className="mt-0.5 block truncate font-mono text-[11px] text-jtext">
-            {item.value}
+          <span
+            className="mt-0.5 block truncate font-mono text-[11px] text-jtext"
+            title="Masked — open the item to reveal the full value"
+          >
+            {maskValue(item.value)}
           </span>
         </span>
       </button>
@@ -112,17 +119,35 @@ export function EvidenceCard({
           </span>
           <div className="min-w-0">
             <p className="jaal-label !tracking-[0.16em]">{item.label}</p>
-            <p className="truncate font-mono text-xs text-jtext">{item.value}</p>
+            <p className="truncate font-mono text-xs text-jtext" title={revealed ? item.value : undefined}>
+              {shown}
+            </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={copy}
-          title="Copy identifier"
-          className="flex size-6 shrink-0 items-center justify-center border border-jborder/60 text-jmuted transition-colors hover:border-jcyan/60 hover:text-jcyan"
-        >
-          {copied ? <Check className="size-3 text-jgreen" /> : <Copy className="size-3" />}
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setRevealed((r) => !r);
+            }}
+            aria-pressed={revealed}
+            title={revealed ? "Hide value" : "Reveal value"}
+            aria-label={revealed ? "Hide identifier value" : "Reveal identifier value"}
+            className="flex size-6 shrink-0 items-center justify-center border border-jborder/60 text-jmuted transition-colors hover:border-jcyan/60 hover:text-jcyan"
+          >
+            {revealed ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+          </button>
+          <button
+            type="button"
+            onClick={copy}
+            title="Copy identifier"
+            aria-label="Copy identifier"
+            className="flex size-6 shrink-0 items-center justify-center border border-jborder/60 text-jmuted transition-colors hover:border-jcyan/60 hover:text-jcyan"
+          >
+            {copied ? <Check className="size-3 text-jgreen" /> : <Copy className="size-3" />}
+          </button>
+        </div>
       </div>
 
       <p className="mt-2 line-clamp-2 border-l-2 border-jborder/70 pl-2 text-[10px] leading-relaxed text-jmuted">
