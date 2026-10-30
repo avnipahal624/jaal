@@ -49,7 +49,7 @@ async function tryLLMStrategy(
         override: res.suggestion as Suggestion,
       });
     } else if (res.fallbackReason) {
-      await ctx.runMutation(api.jaal.applyStrategyOverride, {
+      await ctx.runMutation(internal.jaal.applyStrategyOverride, {
         caseId,
         fallbackReason: res.fallbackReason,
       });
