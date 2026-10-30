@@ -1,4 +1,5 @@
-import { useQuery, useAction } from "convex/react";
+import { useQuery } from "convex/react";
+import { action } from "convex/server";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
@@ -43,6 +44,7 @@ export function CorrelationView({
   const [dirty, setDirty] = useState<Record<string, "accept" | "reject">>({});
 
   const acceptOne = async (id: string) => {
+    await convex.action(api.intelligence.reviewSuggestion, { suggestionId: id, decision: "accept" });
     setDirty((d) => ({ ...d, [id]: "accept" }));
     await accept({ caseId, suggestionId: id, decision: "accept", note: "Approved by investigator" });
     setDirty((d) => {
@@ -52,6 +54,7 @@ export function CorrelationView({
     });
   };
   const rejectOne = async (id: string) => {
+    await convex.action(api.intelligence.reviewSuggestion, { suggestionId: id, decision: "reject" });
     setDirty((d) => ({ ...d, [id]: "reject" }));
     await reject({ caseId, suggestionId: id, decision: "reject", note: "Rejected by investigator" });
     setDirty((d) => {

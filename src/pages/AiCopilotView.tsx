@@ -1,4 +1,5 @@
-import { useQuery, useAction } from "convex/react";
+import { useQuery } from "convex/react";
+import { action } from "convex/server";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
@@ -18,14 +19,12 @@ const SUGGESTIONS = [
 
 export function CopilotView({ caseId }: { caseId: string }) {
   const navigate = useNavigate();
-  const ask = useAction(api.intelligence.copilotAsk);
   const history = useQuery(api.intelligence.copilotHistory, { caseId });
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
 
   const send = async (q: string) => {
-    setSending(true);
-    await ask({ caseId, question: q });
+    const res = await convex.action(api.intelligence.copilotAsk, { caseId, question: q });
     setQuestion("");
     setSending(false);
   };
