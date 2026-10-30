@@ -89,6 +89,7 @@ function Carousel({
   React.useEffect(() => {
     if (!api || !setApi) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setApi(api)
   }, [api, setApi])
 
