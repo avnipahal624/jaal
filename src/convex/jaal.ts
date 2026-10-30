@@ -885,6 +885,12 @@ export const ingestMessages = mutation({
   },
   handler: async (ctx, { caseId, messages }) => {
     const inv = await requireInvestigation(ctx, caseId);
+    if (messages.length > 200) throw new Error("Transcript import is limited to 200 messages per request.");
+    const totalChars = messages.reduce((total, message) => total + message.content.length, 0);
+    if (totalChars > 100_000) throw new Error("Transcript import exceeds the 100,000 character limit.");
+    if (messages.some((message) => message.content.length > 20_000 || message.source.length > 80)) {
+      throw new Error("Transcript message or source exceeds its allowed length.");
+    }
     let count = 0;
     for (const m of messages) {
       if (!m.content.trim()) continue;
@@ -1151,6 +1157,7 @@ export const setEvidenceNotes = mutation({
     if (!doc) return;
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
+    if (notes.length > 5_000) throw new Error("Analyst notes exceed the 5,000 character limit.");
     await ctx.db.patch(evidenceId, { notes });
   },
 });
