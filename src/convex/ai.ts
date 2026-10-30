@@ -12,7 +12,7 @@
  * SIMULATION fallback so the deterministic rule engine keeps the app fully
  * usable. No response is ever fabricated to look like model output.
  */
-import { action } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import { z } from "zod";
 
@@ -86,7 +86,7 @@ function extractJson(text: string): unknown | null {
  * Returns { engineMode: "SIMULATION", suggestion: null } when no key is
  * configured so the caller uses the deterministic rule engine instead.
  */
-export const strategyAction = action({
+export const strategyAction = internalAction({
   args: {
     transcript: v.array(
       v.object({
@@ -155,7 +155,7 @@ export const strategyAction = action({
  * configured or the provider fails — the caller keeps the deterministic
  * summary built from actual analysis records.
  */
-export const summaryAction = action({
+export const summaryAction = internalAction({
   args: {
     title: v.string(),
     category: v.string(),
