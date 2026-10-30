@@ -346,358 +346,306 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Report dossier — warm archival paper, editorial case-file system    */
+/* Report dossier — DARK FORENSIC INTELLIGENCE DOSSIER                 */
 /*                                                                      */
-/* One markup, one warm skin (screen + print). Structure is carried by  */
-/* ink rules, underlines and stamps — never by background color alone  */
-/* — so the PDF stays readable with background graphics disabled.      */
+/* One markup, one dark skin (screen + PDF). Structure is carried by    */
+/* thin cyan rules, mono labels and 1px borders — never by background   */
+/* colour alone — so the document survives with browser "background     */
+/* graphics" switched off.                                              */
 /* ------------------------------------------------------------------ */
 .df-sheet {
-  --paper: #f0e9dc;
-  --paper-2: #e5d9c6;
-  --ink: #202a31;
-  --ink-soft: #5f6d74;
-  --navy: #142630;
-  --teal: #527b78;
-  --rust: #a84b3c;
-  --amber: #b37b37;
-  --rule: #bfb198;
   position: relative;
-  background: var(--paper);
-  color: var(--ink);
+  padding: 22px 16px;
+  background: var(--color-jbg);
+  color: var(--color-jtext);
   font-family: var(--font-sans);
+  border: 1px solid rgba(57, 214, 232, 0.28);
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
-
-/* Paper grain — screen only; disappears entirely in print */
-.df-grain {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(
-    rgba(32, 42, 49, 0.05) 0.5px,
-    transparent 0.6px
-  );
-  background-size: 3px 3px;
-  opacity: 0.55;
+@media (min-width: 640px) {
+  .df-sheet {
+    padding: 36px 40px;
+  }
 }
 
-.df-serif {
-  font-family: var(--font-serif);
+/* Subtle technical grid — the dossier's own surface, not the app shell */
+.df-grid {
+  background-image:
+    linear-gradient(rgba(57, 214, 232, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(57, 214, 232, 0.05) 1px, transparent 1px);
+  background-size: 30px 30px;
 }
+
 .df-mono {
   font-family: var(--font-mono);
 }
 
-/* Small caps kicker — sparingly, for document identity only */
+/* Technical kicker — mono, tracked, uppercase */
 .df-kicker {
   font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.24em;
+  font-size: 9.5px;
+  line-height: 1.3;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--ink-soft);
+  color: var(--color-jmuted);
 }
 
-/* Hairline ink rules — the primary structural device */
+/* Hairline rules — the primary structural device */
 .df-rule {
   border: none;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--color-jborder);
   margin: 0;
 }
 .df-rule-strong {
   border: none;
-  border-top: 2.5px solid var(--navy);
+  border-top: 1px solid rgba(57, 214, 232, 0.5);
   margin: 0;
 }
 
-/* Ink stamp — status marks; text always present, color is secondary */
+/* Status stamp — label text is always present; colour is secondary */
 .df-stamp {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
-  padding: 3px 9px;
-  border: 1.5px solid var(--ink-soft);
-  color: var(--ink-soft);
-  background: transparent;
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  line-height: 1.5;
 }
 .df-stamp::before {
   content: "";
-  width: 6px;
-  height: 6px;
-  border: 1.5px solid currentColor;
+  width: 5px;
+  height: 5px;
   flex-shrink: 0;
-}
-.df-stamp-sm {
-  font-size: 8.5px;
-  padding: 1px 6px;
-  letter-spacing: 0.12em;
+  background: currentColor;
 }
 
-/* Cover page */
-.df-cover {
-  break-after: page;
-  page-break-after: always;
-}
-.df-caseno {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  color: var(--navy);
-}
-.df-title {
-  font-family: var(--font-serif);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: -0.01em;
-  line-height: 1.02;
-  font-size: clamp(30px, 6vw, 52px);
-  color: var(--navy);
-}
-
-/* Exhibit — the cover's single documented evidence fragment */
-.df-exhibit {
-  border-top: 2px solid var(--navy);
-  border-bottom: 1px solid var(--rule);
-  background: var(--paper-2);
-  padding: 14px 18px;
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.df-exhibit-value {
-  font-family: var(--font-mono);
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--navy);
-  overflow-wrap: anywhere;
-}
-
-/* Editorial metadata block — aligned text + fine dividers, no cards */
-.df-metagrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 28px;
-  row-gap: 0;
-}
-@media (min-width: 640px) {
-  .df-metagrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-.df-metacell {
-  padding: 8px 0;
-  border-top: 1px solid var(--rule);
-  min-width: 0;
-}
-.df-metalabel {
-  font-size: 10px;
-  color: var(--ink-soft);
-  letter-spacing: 0.02em;
-}
-.df-metavalue {
-  margin-top: 2px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-}
-
-/* Section headers — large number + serif title + selective underline */
-.df-sec {
-  margin-top: 34px;
-}
+/* Section header — technical number chip + compact heading + rule */
 .df-sechead {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 14px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  margin-bottom: 12px;
+  gap: 8px 10px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(57, 214, 232, 0.35);
   break-after: avoid;
   page-break-after: avoid;
 }
 .df-secnum {
-  font-family: var(--font-serif);
-  font-size: 34px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   font-weight: 700;
-  line-height: 1;
-  color: var(--rule);
+  letter-spacing: 0.1em;
+  color: var(--color-jcyan);
+  padding: 2px 6px;
+  border: 1px solid rgba(57, 214, 232, 0.45);
+  background: rgba(57, 214, 232, 0.08);
+  line-height: 1.3;
 }
 .df-sectitle {
-  font-family: var(--font-serif);
-  font-size: 21px;
+  font-size: 13px;
   font-weight: 700;
-  color: var(--navy);
-  letter-spacing: 0.01em;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--color-jtext);
 }
 .df-secdeck {
-  grid-column: 2;
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--ink-soft);
-}
-.df-secbody-underline {
-  border-top: 1px solid var(--rule);
-  padding-top: 14px;
-}
-
-/* Two-column editorial body */
-.df-cols {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 18px 28px;
-}
-@media (min-width: 720px) {
-  .df-cols-wide-left {
-    grid-template-columns: 1.6fr 1fr;
-  }
-  .df-cols-wide-right {
-    grid-template-columns: 1fr 1.6fr;
-  }
-}
-
-/* Document fragment — a message as a clipped piece of the conversation */
-.df-frag {
-  padding: 8px 0 8px 14px;
-  border-left: 2.5px solid var(--rust);
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.df-frag.df-decoy {
-  border-left-color: var(--teal);
-  margin-left: 28px;
-}
-.df-frag-meta {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-.df-frag-text {
-  margin-top: 4px;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--ink);
-}
-
-/* Pull quote — actual case text, larger and set apart */
-.df-pull {
-  border-left: 3px solid var(--amber);
-  padding: 4px 0 4px 18px;
-  margin: 14px 0;
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-.df-pull-text {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 17px;
-  line-height: 1.5;
-  color: var(--navy);
-}
-
-/* Item with marginal source reference */
-.df-item {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px 18px;
-  padding: 10px 0;
-  border-top: 1px solid var(--rule);
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-@media (min-width: 720px) {
-  .df-item {
-    grid-template-columns: 1fr auto;
-    align-items: baseline;
-  }
-}
-.df-margref {
+  margin-left: auto;
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-soft);
-  white-space: nowrap;
+  color: var(--color-jmuted);
+  text-align: right;
+  max-width: 100%;
+}
+@media (max-width: 640px) {
+  .df-secdeck {
+    margin-left: 0;
+    width: 100%;
+    text-align: left;
+  }
 }
 
-/* Evidence entries */
-.df-evidence {
-  padding: 12px 0;
-  border-top: 1px solid var(--rule);
-  break-inside: avoid;
-  page-break-inside: avoid;
+/* Section body — content sits under the rule */
+.df-body {
+  padding-top: 12px;
 }
-.df-evnum {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: var(--teal);
+
+/* Card — the dossier's unit of structure.
+   Deliberately NOT break-inside: avoid — several cards run taller than one
+   A4 page, and forcing them intact would clip them instead of breaking. */
+.df-card {
+  background: var(--color-jpanel);
+  border: 1px solid rgba(23, 68, 81, 0.9);
 }
-.df-hash {
+
+/* Compact technical metadata grid */
+.df-kv {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(23, 68, 81, 0.65);
+  border: 1px solid rgba(23, 68, 81, 0.65);
+}
+@media (min-width: 760px) {
+  .df-kv {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.df-kv-cell {
+  background: var(--color-jpanel);
+  padding: 8px 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.df-kv-label {
   font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-soft);
+  font-size: 8.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-jmuted);
+}
+.df-kv-value {
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-jtext);
   overflow-wrap: anywhere;
 }
 
-/* Integrity counts — serif numerals, hairline separated */
-.df-counts {
+/* Two-column body (screen only — stacks for print at A4 width) */
+.df-cols {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 24px;
+  grid-template-columns: 1fr;
+  gap: 14px;
 }
-@media (min-width: 640px) {
-  .df-counts {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+@media (min-width: 760px) {
+  .df-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .df-cols-wide-left {
+    grid-template-columns: 1.5fr 1fr;
   }
 }
-.df-count {
-  padding: 10px 0;
-  border-top: 2px solid var(--navy);
-  break-inside: avoid;
-}
-.df-count-num {
-  font-family: var(--font-serif);
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--navy);
-}
-.df-count-label {
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--ink-soft);
-}
 
-/* Analyst annotation — genuine analyst-authored text only */
-.df-annotation {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 14px;
-  line-height: 1.65;
-  color: var(--ink);
-  border-left: 2px solid var(--teal);
-  padding-left: 16px;
+/* Technical tables — fixed layout so no column can overflow the page */
+.df-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+.df-table th {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-jmuted);
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(57, 214, 232, 0.3);
+  overflow-wrap: anywhere;
+}
+.df-table td {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(23, 68, 81, 0.75);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.df-table tbody tr {
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
-/* Legal disclaimer — rust accent, quiet */
+/* Hash values — monospaced, never clipped, never truncated */
+.df-hash {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--color-jmuted);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* Vertical technical timeline with cyan connector + status markers */
+.df-tl {
+  position: relative;
+  padding-left: 16px;
+}
+.df-tl::before {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 5px;
+  bottom: 5px;
+  width: 1px;
+  background: rgba(57, 214, 232, 0.4);
+}
+.df-tl-item {
+  position: relative;
+  padding: 6px 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.df-tl-item::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 10px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--color-jcyan);
+  background: var(--color-jbg);
+}
+/* Inactive / informational marker — smaller, hollow, muted */
+.df-tl-item-muted::before {
+  border-color: var(--color-jmuted);
+}
+
+/* Severity grades — one colour per grade, never the same colour twice */
+.df-sev-critical {
+  color: #f15b64;
+  border-color: #f15b64;
+  background: rgba(241, 91, 100, 0.13);
+}
+.df-sev-high {
+  color: #f4794f;
+  border-color: #f4794f;
+  background: rgba(244, 121, 79, 0.13);
+}
+.df-sev-medium {
+  color: #ffaa45;
+  border-color: #ffaa45;
+  background: rgba(255, 170, 69, 0.13);
+}
+.df-sev-low {
+  color: #35d6a1;
+  border-color: #35d6a1;
+  background: rgba(53, 214, 161, 0.13);
+}
+.df-sev-none {
+  color: var(--color-jmuted);
+  border-color: var(--color-jborder);
+  background: transparent;
+}
+
+/* Integrity disclaimer — red rule, quiet body */
 .df-disclaimer {
-  border-left: 3px solid var(--rust);
-  padding-left: 14px;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--ink-soft);
+  border-left: 2px solid var(--color-jred);
+  padding-left: 12px;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--color-jmuted);
   break-inside: avoid;
   page-break-inside: avoid;
 }
@@ -707,70 +655,71 @@
   display: none;
 }
 
-/* Print — the dossier is paper on screen too, so print needs almost no
-   overrides: keep margins, kill the app chrome, keep the paper tone. */
 @page {
   size: A4;
-  margin: 15mm 14mm 18mm;
+  margin: 14mm 12mm 16mm;
 }
 
 @media print {
   .jaal-no-print {
     display: none !important;
   }
+  /* The dossier IS the printed page: force the dark skin to survive even
+     when the browser's "background graphics" option is on or off. */
+  html,
   body {
-    background: #fff !important;
+    background: var(--color-jbg) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  /* Keep the app-shell surround white when "Background graphics" is enabled */
   .jaal-grid {
-    background: #fff !important;
+    background: var(--color-jbg) !important;
   }
 
-  /* Grain costs toner and adds nothing on paper */
-  .df-grain {
-    display: none !important;
-  }
-
-  /* Print ink palette (status colors flip via --st-* in theme/status.ts) */
   .df-sheet {
-    --ink: #142630;
-    --navy: #06131c;
+    border: none;
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 0 !important;
+    /* Entrance animation must never be captured mid-flight by the printer */
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  /* Stack the evidence rail ahead of the numbered sections on paper */
+  .df-rail {
+    order: -1;
   }
 
   .df-runfoot {
     display: flex;
     position: fixed;
-    bottom: -12mm;
+    bottom: -11mm;
     left: 0;
     right: 0;
     justify-content: space-between;
-    gap: 12px;
+    gap: 10px;
     font-family: var(--font-mono);
-    font-size: 8px;
-    letter-spacing: 0.14em;
+    font-size: 7.5px;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--ink-soft);
-    border-top: 1px solid var(--rule);
+    color: var(--color-jmuted);
+    border-top: 1px solid var(--color-jborder);
     padding-top: 3px;
   }
 
-  .df-cover,
-  .df-exhibit,
-  .df-frag,
-  .df-pull,
-  .df-item,
-  .df-evidence,
-  .df-count,
-  .df-annotation,
-  .df-disclaimer {
+  .df-tl-item,
+  .df-disclaimer,
+  .df-kv-cell,
+  .df-table tbody tr {
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  .df-sechead {
-    break-after: avoid;
-    page-break-after: avoid;
-  }
-  .df-frag.df-decoy {
-    margin-left: 18px;
+
+  /* Navigation affordances carry no meaning on paper */
+  a {
+    color: inherit;
+    text-decoration: none;
   }
 }
