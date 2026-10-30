@@ -17,7 +17,8 @@ const FLAGS = {
 } as const;
 
 function setup() {
-  return convexTest(schema, modules);
+  // Backend functions require an authenticated owner. Use an isolated synthetic identity.
+  return convexTest(schema, modules).withIdentity({ subject: "test-operator" });
 }
 
 async function createCase(
