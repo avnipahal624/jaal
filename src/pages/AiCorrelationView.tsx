@@ -38,8 +38,8 @@ export function CorrelationView({
 }) {
   const navigate = useNavigate();
   const list = useQuery(api.intelligence.suggestions, { caseId });
-  const accept = useAction(api.intelligence.reviewSuggestion);
-  const reject = useAction(api.intelligence.reviewSuggestion);
+  const accept = useQuery(api.intelligence.reviewSuggestion);
+  const reject = useQuery(api.intelligence.reviewSuggestion);
   const [dirty, setDirty] = useState<Record<string, "accept" | "reject">>({});
 
   const acceptOne = async (id: string) => {

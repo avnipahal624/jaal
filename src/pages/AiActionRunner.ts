@@ -1,4 +1,5 @@
 import { useAction } from "convex/react";
+import { action } from "./_generated/server";
 import { api } from "@/convex/_generated/api";
 import type { AiAnalysis } from "./AiIntelligencePage";
 
@@ -12,13 +13,23 @@ export async function runModule(
   module: "threat" | "prediction" | "correlation" | "report",
   caseId: string,
 ): Promise<{ status: AiAnalysis["status"]; error: string | null; limitations: string[]; count: number }> {
-  const start = Date.now();
   try {
-    const res = await useAction(api.intelligence[module] === "threat" ? api.intelligence.threatAnalysis : null)({ caseId, force: false });
+    const actionMap: Record<"threat" | "prediction" | "correlation" | "report", ActionBuilder<any, "public">> = {
+      threat: api.intelligence.threatAnalysis,
+      prediction: api.intelligence.prediction,
+      correlation: api.intelligence.correlation,
+      report: api.intelligence.reportAssist,
+    };
+    const fn = actionMap[module as keyof typeof actionMap];
+    const actionRes = await useAction(fn as any)({ caseId, force: false });
+    const base: Record<string, unknown> = actionRes ?? {};
+    return {
+      status: base.status === "COMPLETED" ? "COMPLETED" : base.status === "FAILED" ? "FAILED" : "UNAVAILABLE",
+      error: typeof base.error === "string" ? base.error : null,
+      limitations: Array.isArray(base.limitations) ? base.limitations : [],
+      count: typeof base.count === "number" ? base.count : 0,
+    };
   } catch (err: any) {
     return { status: "FAILED", error: err?.message ?? "action error", limitations: [], count: 0 };
   }
-  // `useAction` resolves to the action's return type — for the shared pipeline
-  // every module returns ModuleRunResult. Fall through to the honest state.
-  return { status: "COMPLETED", error: null, limitations: [], count: 0 };
 }
