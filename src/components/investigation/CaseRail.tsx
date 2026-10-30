@@ -18,6 +18,7 @@ import {
   Flag,
   MessageSquare,
   Radio,
+  Share2,
   ShieldAlert,
   ShieldCheck,
   type LucideIcon,
@@ -34,6 +35,8 @@ const ACTIVITY_ICON: Record<ActivityKind, LucideIcon> = {
   integrity_verified: ShieldCheck,
   integrity_mismatch: ShieldAlert,
   evidence_reviewed: ClipboardCheck,
+  correlation: Share2,
+  ai_analysis: Brain,
 };
 
 

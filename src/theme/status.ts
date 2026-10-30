@@ -190,6 +190,8 @@ export const ACTIVITY_TEXT = {
   integrity_verified: STATUS_SCREEN.integrity.verified.text,
   integrity_mismatch: STATUS_SCREEN.integrity.mismatch.text,
   evidence_reviewed: STATUS_SCREEN.review.confirmed.text,
+  correlation: STATUS_SCREEN.review.confirmed.text,
+  ai_analysis: STATUS_SCREEN.engine.claude.text,
 } as const satisfies Record<string, string>;
 
 /** Activity kind → text color hex (use via inline style; unknown kinds fall

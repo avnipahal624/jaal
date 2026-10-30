@@ -86,7 +86,9 @@ export type ActivityKind =
   | "report_created"
   | "integrity_verified"
   | "integrity_mismatch"
-  | "evidence_reviewed";
+  | "evidence_reviewed"
+  | "correlation"
+  | "ai_analysis";
 
 export interface ActivityEvent {
   id: string;

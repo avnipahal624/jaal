@@ -3,11 +3,13 @@ import type { ActivityKind } from "@/types/investigation";
 import { formatClock, relativeTime, truncate } from "@/utils/formatters";
 import {
   ArrowRight,
+  Brain,
   ClipboardCheck,
   Fingerprint,
   Flag,
   FileSignature,
   Radio,
+  Share2,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
@@ -23,6 +25,8 @@ const KIND_ICON: Record<ActivityKind, typeof Radio> = {
   integrity_verified: ShieldCheck,
   integrity_mismatch: ShieldAlert,
   evidence_reviewed: ClipboardCheck,
+  correlation: Share2,
+  ai_analysis: Brain,
 };
 
 const KIND_COLOR: Record<ActivityKind, string> = {
@@ -36,6 +40,8 @@ const KIND_COLOR: Record<ActivityKind, string> = {
   integrity_verified: "text-jgreen border-jgreen/40",
   integrity_mismatch: "text-jred border-jred/40",
   evidence_reviewed: "text-jteal border-jteal/40",
+  correlation: "text-jteal border-jteal/40",
+  ai_analysis: "text-jcyan border-jcyan/40",
 };
 
 export interface FeedEntry {

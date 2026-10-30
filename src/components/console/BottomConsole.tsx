@@ -47,6 +47,8 @@ const ACTIVITY_ICON: Record<ActivityKind, LucideIcon> = {
   integrity_verified: Check,
   integrity_mismatch: ShieldAlert,
   evidence_reviewed: ClipboardCheck,
+  correlation: ClipboardCheck,
+  ai_analysis: Brain,
 };
 
 

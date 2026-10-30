@@ -265,6 +265,113 @@ const schema = defineSchema(
       at: v.number(),
     }).index("by_owner_at", ["owner", "at"]),
 
+    /**
+     * JAAL INTELLIGENCE ENGINE — one row per (case, module) AI analysis.
+     * The latest result per module wins; AI output is stored SEPARATELY from
+     * original messages/evidence and can never mutate them.
+     */
+    ai_analyses: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      module: v.union(
+        v.literal("threat"),
+        v.literal("prediction"),
+        v.literal("correlation"),
+        v.literal("report"),
+      ),
+      status: v.union(
+        v.literal("PROCESSING"),
+        v.literal("COMPLETED"),
+        v.literal("FAILED"),
+        v.literal("UNAVAILABLE"),
+      ),
+      /** Version of the prompt + output schema that produced this result. */
+      schemaVersion: v.number(),
+      /** Fingerprint of the conversation/evidence version that was analysed. */
+      fingerprint: v.string(),
+      inputMessageCount: v.number(),
+      provider: v.optional(v.string()),
+      model: v.optional(v.string()),
+      /** Validated structured output — never rendered without validation. */
+      output: v.optional(v.any()),
+      limitations: v.array(v.string()),
+      /** Failure CATEGORY only (e.g. "provider-error") — never raw content. */
+      error: v.optional(v.string()),
+      durationMs: v.optional(v.number()),
+      at: v.number(),
+    })
+      .index("by_owner_case", ["owner", "caseId"])
+      .index("by_case_module", ["investigationId", "module"]),
+
+    /** Investigation Copilot — per-case chat history (owner-scoped). */
+    copilot_messages: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      role: v.union(v.literal("user"), v.literal("assistant")),
+      content: v.string(),
+      /** Structured answer parts (validated) for assistant turns. */
+      sections: v.optional(v.any()),
+      refs: v.optional(v.any()),
+      status: v.optional(v.string()),
+      error: v.optional(v.string()),
+      at: v.number(),
+    })
+      .index("by_investigation", ["investigationId"])
+      .index("by_owner_case", ["owner", "caseId"]),
+
+    /**
+     * AI / rule-based relationship SUGGESTIONS — always PENDING_REVIEW
+     * until the investigator accepts or rejects them. Never auto-promoted.
+     */
+    correlation_suggestions: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      source: v.any(), // { kind: "indicator"|"message"|"tactic", recordId, label }
+      target: v.any(),
+      relation: v.string(),
+      category: v.string(),
+      explanation: v.string(),
+      messageRefs: v.array(v.string()),
+      evidenceRefs: v.array(v.string()),
+      confidence: v.union(
+        v.literal("low"),
+        v.literal("medium"),
+        v.literal("high"),
+      ),
+      origin: v.union(v.literal("AI"), v.literal("RULE_BASED")),
+      status: v.union(
+        v.literal("PENDING_REVIEW"),
+        v.literal("ACCEPTED"),
+        v.literal("REJECTED"),
+      ),
+      reviewer: v.optional(v.string()),
+      reviewedAt: v.optional(v.number()),
+      reviewNote: v.optional(v.string()),
+      fingerprint: v.string(),
+      at: v.number(),
+    })
+      .index("by_investigation", ["investigationId"])
+      .index("by_investigation_status", ["investigationId", "status"]),
+
+    /** Confirmed relationships — created ONLY by investigator acceptance. */
+    correlations: defineTable({
+      investigationId: v.id("investigations"),
+      owner: v.string(),
+      caseId: v.string(),
+      source: v.any(),
+      target: v.any(),
+      relation: v.string(),
+      basis: v.string(),
+      messageRefs: v.array(v.string()),
+      evidenceRefs: v.array(v.string()),
+      suggestionId: v.id("correlation_suggestions"),
+      acceptedBy: v.string(),
+      acceptedAt: v.number(),
+    }).index("by_investigation", ["investigationId"]),
+
     /** Per-user settings (appearance / investigation / simulation). */
     settings: defineTable({
       owner: v.string(),
