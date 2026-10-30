@@ -313,6 +313,16 @@ All functions enforce owner authorization server-side; case-scoped mutations
 resolve the investigation through the owner index and never trust a
 client-claimed caseId alone.
 
+## Security hardening notes
+
+- Backend case ownership is tied to the authenticated Convex identity subject. There is no shared unauthenticated `demo` owner.
+- The local demo session remains a browser-local simulation and skips authenticated Convex subscriptions until an operator signs in through Convex auth.
+- LLM actions and the mutations that apply their outputs are internal-only. Case ownership is resolved by the public workflow before internal AI work runs.
+- Transcript imports are bounded by message count and character limits; transcript text is treated as untrusted evidence in AI prompts.
+- Evidence hash generation establishes a baseline once. Re-generating an existing baseline is rejected; verification compares current content to the existing hash.
+- The integrity-demo mutation is limited to synthetic simulation cases and requires an existing baseline.
+- SHA-256 hashes remain stored beside evidence in the same database. They detect content changes relative to the stored baseline, but do not independently prove source authenticity or legal chain of custody.
+
 ## Testing
 
 ```bash
@@ -346,6 +356,7 @@ npx convex run jaal:resetDemo '{}'   # wipe + restore the clean demo cases
 
 ```bash
 bun install
+bunx convex codegen  # generate typed Convex API bindings
 bun run dev        # Vite dev server (frontend + Convex via VITE_CONVEX_URL)
 npx convex dev     # Convex dev process (pushes functions, syncs deployment)
 bun run test       # backend + service test suite

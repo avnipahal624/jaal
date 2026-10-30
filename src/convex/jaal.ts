@@ -12,7 +12,7 @@
  * ownership server-side and never trusts a client-claimed caseId alone.
  */
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, query, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   buildRuntime,
@@ -735,7 +735,7 @@ async function sendDecoyAndReply(
  * Called by the AI action wrapper (actions may call mutations; mutations
  * cannot call actions). Passing no override records the fallback reason.
  */
-export const applyStrategyOverride = mutation({
+export const applyStrategyOverride = internalMutation({
   args: {
     caseId: v.string(),
     override: v.optional(
@@ -885,6 +885,12 @@ export const ingestMessages = mutation({
   },
   handler: async (ctx, { caseId, messages }) => {
     const inv = await requireInvestigation(ctx, caseId);
+    if (messages.length > 200) throw new Error("Transcript import is limited to 200 messages per request.");
+    const totalChars = messages.reduce((total, message) => total + message.content.length, 0);
+    if (totalChars > 100_000) throw new Error("Transcript import exceeds the 100,000 character limit.");
+    if (messages.some((message) => message.content.length > 20_000 || message.source.length > 80)) {
+      throw new Error("Transcript message or source exceeds its allowed length.");
+    }
     let count = 0;
     for (const m of messages) {
       if (!m.content.trim()) continue;
@@ -1031,6 +1037,11 @@ export const generateHash = mutation({
     if (!doc) throw new Error("Evidence not found");
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
+    // A generated hash is the baseline. Never silently replace an existing
+    // baseline; use verifyEvidence to compare current content against it.
+    if (doc.integrityHash) {
+      throw new Error("A baseline hash already exists. Verify the existing hash instead of replacing it.");
+    }
     const hash = await sha256Hex(doc.content);
     const at = Date.now();
     await ctx.db.patch(evidenceId, {
@@ -1065,26 +1076,8 @@ export const verifyEvidence = mutation({
     if (doc.owner !== owner) throw new Error("Not authorized");
     const inv = await ctx.db.get(doc.investigationId);
     if (!doc.integrityHash) {
-      // No recorded hash — generate one, report the generated state.
-      const hash = await sha256Hex(doc.content);
-      const at = Date.now();
-      await ctx.db.patch(evidenceId, {
-        integrityHash: hash,
-        integrityAlgorithm: "SHA-256",
-        integrityStatus: "HASH_GENERATED",
-        hashGeneratedAt: at,
-      });
-      if (inv) {
-        await pushEvent(
-          ctx.db,
-          inv,
-          "hash_generated",
-          "Evidence hash generated",
-          `${doc.label}: ${doc.extractedValue}`,
-          at,
-        );
-        await pushLog(ctx.db, inv, "success", `SHA-256 hash generated · ${doc.label}`, at);
-      }
+      // Verification cannot establish integrity without a pre-existing baseline.
+      // Generate the baseline explicitly with generateHash, then verify it.
       return "error";
     }
     const recomputed = await sha256Hex(doc.content);
@@ -1133,16 +1126,27 @@ export const setEvidenceContent = mutation({
     if (!doc) return;
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
-    await ctx.db.patch(evidenceId, { content, tampered: true });
+    if (content.length > 20_000) throw new Error("Evidence content exceeds the 20,000 character limit.");
     const inv = await ctx.db.get(doc.investigationId);
-    if (inv) {
-      await pushLog(
-        ctx.db,
-        inv,
-        "warn",
-        "Evidence content modified by operator (integrity demo)",
-      );
+    // Content mutation exists only to demonstrate hash mismatch in synthetic
+    // training cases. Never expose it for imported/pasted evidence.
+    if (!inv || inv.source !== "simulation") {
+      throw new Error("Evidence tampering is available only in controlled simulation cases.");
     }
+    if (!doc.integrityHash) {
+      throw new Error("Generate a baseline hash before running the integrity demo.");
+    }
+    await ctx.db.patch(evidenceId, {
+      content,
+      tampered: true,
+      integrityStatus: "HASH_GENERATED",
+    });
+    await pushLog(
+      ctx.db,
+      inv,
+      "warn",
+      "Synthetic evidence content modified by operator (integrity demo)",
+    );
   },
 });
 
@@ -1153,6 +1157,7 @@ export const setEvidenceNotes = mutation({
     if (!doc) return;
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
+    if (notes.length > 5_000) throw new Error("Analyst notes exceed the 5,000 character limit.");
     await ctx.db.patch(evidenceId, { notes });
   },
 });
@@ -1228,7 +1233,7 @@ export const generateReport = mutation({
 });
 
 /** Replace a report's summary with an LLM-written one (labeled engine). */
-export const applyReportSummary = mutation({
+export const applyReportSummary = internalMutation({
   args: {
     caseId: v.string(),
     reportId: v.string(),

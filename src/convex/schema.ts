@@ -56,7 +56,7 @@ const schema = defineSchema(
     /** One investigation (case). `caseId` is the human-readable JAAL-XXX label. */
     investigations: defineTable({
       caseId: v.string(),
-      /** Identity subject of the owning user, or "demo" for simulation login. */
+      /** Authenticated Convex identity subject that owns this case. */
       owner: v.string(),
       title: v.string(),
       category: v.string(),

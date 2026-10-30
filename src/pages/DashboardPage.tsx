@@ -30,6 +30,7 @@ const FEED_KINDS = new Set([
 ]);
 
 export default function DashboardPage() {
+  const [renderedAt] = useState(() => Date.now());
   const { state } = useJaal();
   const activities = useAllActivities();
   const [query, setQuery] = useState("");
@@ -80,7 +81,7 @@ export default function DashboardPage() {
       >
         <div>
           <p className="jaal-label !text-jcyan">
-            JAAL / COMMAND · {formatDateTime(Date.now())}
+            JAAL / COMMAND · {formatDateTime(renderedAt)}
           </p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-jtext sm:text-3xl">
             Investigation launchpad

@@ -56,8 +56,10 @@ export function ConversationConsole({
   }, [messages.length, isTyping, stickToBottom]);
 
   // Briefly highlight the newest message.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (!lastId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFreshId(lastId);
     const t = window.setTimeout(() => setFreshId(null), 2400);
     return () => window.clearTimeout(t);

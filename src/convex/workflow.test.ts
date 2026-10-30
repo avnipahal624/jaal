@@ -17,7 +17,8 @@ const FLAGS = {
 } as const;
 
 function setup() {
-  return convexTest(schema, modules);
+  // Backend functions require an authenticated owner. Use an isolated synthetic identity.
+  return convexTest(schema, modules).withIdentity({ subject: "test-operator" });
 }
 
 async function createCase(
@@ -254,6 +255,27 @@ describe("evidence integrity", () => {
     expect(detail?.sourceMessage?.text).toContain("+91 98765 43210");
   });
 
+  it("does not replace an existing evidence hash baseline", async () => {
+    const t = setup();
+    await createCase(t);
+    await t.mutation(api.jaal.sendMessage, {
+      caseId: "JAAL-100",
+      text: "Deposit ₹25,000 to continue verification.",
+    });
+    const rt = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const ev = rt.evidence.find((e) => e.type === "payment_request")!;
+    const baseline = ev.hash;
+    await expect(
+      t.mutation(api.jaal.generateHash, { evidenceId: ev.id as never }),
+    ).rejects.toThrow(/baseline hash already exists/i);
+    const verify = await t.mutation(api.jaal.verifyEvidence, {
+      evidenceId: ev.id as never,
+    });
+    expect(verify).toBe("match");
+    const after = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    expect(after.evidence.find((e) => e.id === ev.id)!.hash).toBe(baseline);
+  });
+
   it("updates analyst notes without altering the evidence snapshot", async () => {
     const t = setup();
     await createCase(t);
@@ -345,6 +367,24 @@ describe("demo data", () => {
 });
 
 describe("authorization", () => {
+  it("rejects unauthenticated backend access", async () => {
+    const anonymous = convexTest(schema, modules);
+    await expect(anonymous.query(api.jaal.state)).rejects.toThrow(/authentication required/i);
+    await expect(
+      anonymous.mutation(api.jaal.createInvestigation, {
+        caseId: "JAAL-999",
+        title: "Unauthenticated case",
+        category: "Digital arrest scam",
+        description: "d",
+        notes: "n",
+        source: "simulation",
+        detectionMode: "simulation",
+        flags: { ...FLAGS },
+      }),
+    ).rejects.toThrow(/authentication required/i);
+  });
+
+
   it("hides other owners' cases and rejects cross-owner mutations", async () => {
     const t = setup();
     const alice = t.withIdentity({ subject: "alice" });

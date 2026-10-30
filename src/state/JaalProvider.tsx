@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery, useConvexAuth } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { clearDemoSession, setDemoSession } from "@/lib/demoSession";
 import { api as httpApi, probeBackend, tryApi, type BackendStatus } from "@/services/api";
@@ -117,7 +117,9 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   const [typingMap, setTypingMap] = useState<Record<string, boolean>>({});
 
   // ---- Backend (Convex) wiring ------------------------------------------
-  const remote = useQuery(api.jaal.state) as RemoteState | undefined;
+  // Local demo mode stays offline and never calls protected backend functions without a Convex identity.
+  const { isAuthenticated } = useConvexAuth();
+  const remote = useQuery(api.jaal.state, isAuthenticated ? {} : "skip") as RemoteState | undefined;
   const remoteReady = remote !== undefined;
 
   const seedDemo = useMutation(api.jaal.seedDemo);

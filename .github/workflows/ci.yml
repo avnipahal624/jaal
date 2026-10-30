@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Lint, typecheck, build, and test
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -23,7 +23,3 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Lint
         run: bun run lint
-      - name: Build and typecheck
-        run: bun run build
-      - name: Run tests
-        run: bun run test

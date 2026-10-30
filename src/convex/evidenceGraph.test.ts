@@ -20,7 +20,8 @@ const FLAGS = {
 } as const;
 
 function setup() {
-  return convexTest(schema, modules);
+  // Evidence graph queries are owner-scoped; use a synthetic test identity.
+  return convexTest(schema, modules).withIdentity({ subject: "graph-test-operator" });
 }
 
 type T = ReturnType<typeof setup>;
