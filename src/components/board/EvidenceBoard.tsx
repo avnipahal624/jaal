@@ -12,7 +12,7 @@ import type {
 } from "@/types/evidenceGraph";
 import type { EvidenceItem } from "@/types/evidence";
 import { formatClock } from "@/utils/formatters";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import {
   AlertTriangle,
   Fingerprint,
@@ -219,9 +219,11 @@ function GraphCanvas({
   onOpenSource: (messageId: string) => void;
   defaultView: "board" | "list";
 }) {
-  const graph = useQuery(api.evidenceGraph.getByInvestigation, {
-    investigationId: caseId,
-  });
+  const { isAuthenticated } = useConvexAuth();
+  const graph = useQuery(
+    api.evidenceGraph.getByInvestigation,
+    isAuthenticated ? { investigationId: caseId } : "skip",
+  );
   const { state } = useJaal();
   const [view, setView] = useState<"board" | "list">(defaultView);
   const [offsets, setOffsets] = useState<Record<string, { x: number; y: number }>>(
@@ -260,7 +262,7 @@ function GraphCanvas({
 
   // ---- Loading / offline state ------------------------------------------
   if (graph === undefined || layout === null || edgeIndex === null) {
-    const offline = state.backendStatus === "offline";
+    const offline = !isAuthenticated || state.backendStatus === "offline";
     return (
       <div className="jaal-board flex h-full min-h-0 flex-col items-center justify-center gap-3 px-6 text-center">
         {offline ? (
