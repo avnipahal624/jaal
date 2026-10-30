@@ -1,20 +1,8 @@
 import { useQuery } from "convex/react";
-import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { formatClock, formatDateTime } from "@/utils/formatters";
-import type { AiAnalysis } from "./AiIntelligencePage";
-
-const SECTIONS: { key: keyof AiReportSections; label: string; icon: string }[] = [
-  { key: "overview", label: "Overview", icon: "Σ" },
-  { key: "incidentSummary", label: "Incident summary", icon: "▸" },
-  { key: "scope", label: "Scope", icon: "□" },
-  { key: "conversationAnalysis", label: "Conversation analysis", icon: "💬" },
-  { key: "behaviourAnalysis", label: "Behavioural analysis", icon: "🧠" },
-  { key: "recommendations", label: "Recommended next steps", icon: "→" },
-  { key: "limitations", label: "Limitations & unknowns", icon: "?" },
-];
+import { Chip } from "@/components/ui/panel";
+import { AI_TONE, useRunModule } from "./AiActionRunner";
 
 export interface AiReportSections {
   overview: string;
@@ -26,22 +14,24 @@ export interface AiReportSections {
   limitations: string[];
 }
 
-export function ReportView({
-  caseId,
-  analysis,
-  stale,
-}: {
-  caseId: string;
-  analysis: AiAnalysis | null;
-  stale: boolean;
-}) {
-  const navigate = useNavigate();
-  const latest = useQuery(api.intelligence.analyses, { caseId });
-  const run = async () => {
-    await api.intelligence.reportAssist({ caseId });
-  };
+const SECTIONS: { key: keyof AiReportSections; label: string; icon: string }[] = [
+  { key: "overview", label: "Overview", icon: "Σ" },
+  { key: "incidentSummary", label: "Incident summary", icon: "▸" },
+  { key: "scope", label: "Scope", icon: "□" },
+  { key: "conversationAnalysis", label: "Conversation analysis", icon: "💬" },
+  { key: "behaviourAnalysis", label: "Behavioural analysis", icon: "🧠" },
+  { key: "recommendations", label: "Recommended next steps", icon: "→" },
+  { key: "limitations", label: "Limitations & unknowns", icon: "?" },
+];
 
-  const current = latest?.analyses.find((a) => a.module === "report") ?? null;
+export function ReportView({ caseId }: { caseId: string }) {
+  const runModule = useRunModule();
+  // Full stored row — includes the grounded `output` the list query omits.
+  const current = useQuery(api.intelligence.getAnalysis, { caseId, module: "report" });
+
+  const run = async () => {
+    await runModule("report", caseId);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -54,7 +44,7 @@ export function ReportView({
           {!current ? (
             <Button
               onClick={run}
-              disabled={!latest}
+              disabled={current === undefined}
               className="font-mono text-[10px] uppercase tracking-wider bg-jteal text-background hover:bg-jteal/85"
             >
               <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -90,42 +80,42 @@ export function ReportView({
           <div className="border-b border-jborder/40 px-3 py-2" style={{ scrollMarginTop: "2rem" }}>
             <div className="flex flex-wrap items-center gap-2">
               {current.status === "COMPLETED" ? (
-                <Badge tone="success" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.success} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 12l2.5 2.5L16 6" />
                   </svg>
                   completed
-                </Badge>
+                </Chip>
               ) : current.status === "PROCESSING" ? (
-                <Badge tone="warning" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.warning} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
                   </svg>
                   processing
-                </Badge>
+                </Chip>
               ) : current.status === "FAILED" ? (
-                <Badge tone="error" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.error} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 9l-6 6M9 9l6 6" />
                   </svg>
                   failed
-                </Badge>
+                </Chip>
               ) : current.status === "UNAVAILABLE" ? (
-                <Badge tone="attention" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.attention} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4m0-4h.01" />
                   </svg>
                   unavailable
-                </Badge>
+                </Chip>
               ) : (
-                <Badge tone="neutral" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.neutral} className="font-mono text-[9px] uppercase tracking-wider">
                   not started
-                </Badge>
+                </Chip>
               )}
-              {stale && current.status === "COMPLETED" && (
+              {current.stale && current.status === "COMPLETED" && (
                 <span className="font-mono text-[8px] uppercase tracking-widest text-jamber">stale</span>
               )}
               {current.provider && current.model && (
@@ -145,12 +135,10 @@ export function ReportView({
           {current.status === "COMPLETED" ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
               {SECTIONS.map((s) => {
-                const text =
-                  s.key === "recommendations"
-                    ? (current.output?.recommendations as string[] | undefined)
-                    : (current.output as Record<string, string> | undefined)?.[s.key];
+                const output = current.output as Partial<AiReportSections> | null | undefined;
                 const isArray = s.key === "recommendations";
-                const list = isArray ? (current.output?.recommendations as string[] | undefined) : undefined;
+                const list = isArray ? output?.recommendations : undefined;
+                const text = isArray ? undefined : (output?.[s.key] as string | undefined);
                 return (
                   <div
                     key={s.key}
@@ -187,24 +175,16 @@ export function ReportView({
                 </div>
               )}
             </div>
-          ) : current.status === "COMPLETED" ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 px-3 py-8 text-center">
-              <svg className="size-10 text-jmuted/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
-              </svg>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted">No narrative generated</p>
-              <p className="font-mono text-[9px] text-jmuted/60">The report ran but produced no sections to show.</p>
-            </div>
           ) : null}
         </div>
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 border-b border-jborder/40 px-3 py-6 text-center">
           <svg className="size-8 text-jmuted/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09-3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
           </svg>
           <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted">No report yet</p>
           <p className="font-mono text-[9px] text-jmuted/60">
-            {latest === undefined ? "Waiting for the case to load…" : "Hit Generate to add AI narrative sections."}
+            {current === undefined ? "Waiting for the case to load…" : "Hit Generate to add AI narrative sections."}
           </p>
         </div>
       )}

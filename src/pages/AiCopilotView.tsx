@@ -1,12 +1,11 @@
-import { useQuery } from "convex/react";
-import { action } from "convex/server";
+import { useAction, useQuery } from "convex/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { formatClock } from "@/utils/formatters";
+import { Chip } from "@/components/ui/panel";
+import { AI_TONE } from "./AiActionRunner";
 
 const SUGGESTIONS = [
   "Why was the first message flagged?",
@@ -20,13 +19,18 @@ const SUGGESTIONS = [
 export function CopilotView({ caseId }: { caseId: string }) {
   const navigate = useNavigate();
   const history = useQuery(api.intelligence.copilotHistory, { caseId });
+  const ask = useAction(api.intelligenceActions.copilotAskAction);
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
 
   const send = async (q: string) => {
-    const res = await convex.action(api.intelligence.copilotAsk, { caseId, question: q });
-    setQuestion("");
-    setSending(false);
+    setSending(true);
+    try {
+      await ask({ caseId, question: q });
+      setQuestion("");
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -73,11 +77,11 @@ export function CopilotView({ caseId }: { caseId: string }) {
                   {turn.role === "user" ? "INVESTIGATOR" : "COPILOT"}
                 </span>
                 {turn.status === "COMPLETED" ? (
-                  <Badge tone="success" className="font-mono text-[8px] uppercase tracking-wider">d</Badge>
+                  <Chip tone={AI_TONE.success} className="font-mono text-[8px] uppercase tracking-wider">d</Chip>
                 ) : turn.status === "FAILED" ? (
-                  <Badge tone="error" className="font-mono text-[8px] uppercase tracking-wider">f</Badge>
+                  <Chip tone={AI_TONE.error} className="font-mono text-[8px] uppercase tracking-wider">f</Chip>
                 ) : turn.status === "UNAVAILABLE" ? (
-                  <Badge tone="attention" className="font-mono text-[8px] uppercase tracking-wider">u</Badge>
+                  <Chip tone={AI_TONE.attention} className="font-mono text-[8px] uppercase tracking-wider">u</Chip>
                 ) : null}
               </div>
               {turn.role === "user" ? (
@@ -91,9 +95,9 @@ export function CopilotView({ caseId }: { caseId: string }) {
               ) : null}
               {turn.sections?.answer && turn.sections.points?.map((pt: any, i: number) => (
                 <div key={i} className="ml-5 flex min-w-0 flex-wrap gap-2">
-                  <Badge tone="neutral" className="font-mono text-[8px] uppercase tracking-wider">
+                  <Chip tone={AI_TONE.neutral} className="font-mono text-[8px] uppercase tracking-wider">
                     {pt.text?.slice(0, 60)}
-                  </Badge>
+                  </Chip>
                   {pt.messageRefs?.map((r: any) => (
                     <button
                       key={r.messageId}

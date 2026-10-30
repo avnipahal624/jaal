@@ -1,12 +1,11 @@
-import { useQuery } from "convex/react";
-import { action } from "convex/server";
+import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { statusStyle } from "@/theme/status";
-import { formatClock } from "@/utils/formatters";
+import { Chip } from "@/components/ui/panel";
+import { AI_TONE } from "./AiActionRunner";
 
 const RELATION_LABELS: Record<string, string> = {
   REPEATED_IDENTIFIER: "Repeated identifier",
@@ -39,29 +38,33 @@ export function CorrelationView({
 }) {
   const navigate = useNavigate();
   const list = useQuery(api.intelligence.suggestions, { caseId });
-  const accept = useQuery(api.intelligence.reviewSuggestion);
-  const reject = useQuery(api.intelligence.reviewSuggestion);
+  // Investigator review is the only path to CONFIRMED — nothing auto-confirms.
+  const review = useMutation(api.intelligence.reviewSuggestion);
   const [dirty, setDirty] = useState<Record<string, "accept" | "reject">>({});
 
-  const acceptOne = async (id: string) => {
-    await convex.action(api.intelligence.reviewSuggestion, { suggestionId: id, decision: "accept" });
+  const acceptOne = async (id: Id<"correlation_suggestions">) => {
     setDirty((d) => ({ ...d, [id]: "accept" }));
-    await accept({ caseId, suggestionId: id, decision: "accept", note: "Approved by investigator" });
-    setDirty((d) => {
-      const next = { ...d };
-      delete next[id];
-      return next;
-    });
+    try {
+      await review({ suggestionId: id, decision: "accept", note: "Approved by investigator" });
+    } finally {
+      setDirty((d) => {
+        const next = { ...d };
+        delete next[id];
+        return next;
+      });
+    }
   };
-  const rejectOne = async (id: string) => {
-    await convex.action(api.intelligence.reviewSuggestion, { suggestionId: id, decision: "reject" });
+  const rejectOne = async (id: Id<"correlation_suggestions">) => {
     setDirty((d) => ({ ...d, [id]: "reject" }));
-    await reject({ caseId, suggestionId: id, decision: "reject", note: "Rejected by investigator" });
-    setDirty((d) => {
-      const next = { ...d };
-      delete next[id];
-      return next;
-    });
+    try {
+      await review({ suggestionId: id, decision: "reject", note: "Rejected by investigator" });
+    } finally {
+      setDirty((d) => {
+        const next = { ...d };
+        delete next[id];
+        return next;
+      });
+    }
   };
 
   const pending = list?.suggestions?.filter((s: any) => s.status === "PENDING_REVIEW") ?? [];
@@ -75,13 +78,13 @@ export function CorrelationView({
         </div>
         <div className="flex flex-wrap gap-1.5">
           {pending.length > 0 ? (
-            <Badge tone="warning" className="font-mono text-[9px] uppercase tracking-wider">
+            <Chip tone={AI_TONE.warning} className="font-mono text-[9px] uppercase tracking-wider">
               {pending.length} pending review
-            </Badge>
+            </Chip>
           ) : (
-            <Badge tone="neutral" className="font-mono text-[9px] uppercase tracking-wider">
+            <Chip tone={AI_TONE.neutral} className="font-mono text-[9px] uppercase tracking-wider">
               {suggestions?.pending ?? 0} pending
-            </Badge>
+            </Chip>
           )}
           {suggestions && suggestions.total > 0 && (
             <span className="font-mono text-[9px] text-jmuted/60">{suggestions.total} total</span>
@@ -115,15 +118,15 @@ export function CorrelationView({
                   <span className="font-mono text-[8px] uppercase tracking-widest text-jmuted">
                     Suggestion #{s.id.slice(0, 8)}
                   </span>
-                  <Badge tone="neutral" className="font-mono text-[9px] uppercase tracking-wider">
+                  <Chip tone={AI_TONE.neutral} className="font-mono text-[9px] uppercase tracking-wider">
                     {RELATION_LABELS[s.relation] ?? s.relation}
-                  </Badge>
-                  <Badge tone="neutral" className={`font-mono text-[8px] uppercase tracking-wider ${CONFIDENCE_COLORS[s.confidence] ?? ""}`}>
+                  </Chip>
+                  <Chip tone={AI_TONE.neutral} className={`font-mono text-[8px] uppercase tracking-wider ${CONFIDENCE_COLORS[s.confidence] ?? ""}`}>
                     {s.confidence} confidence
-                  </Badge>
-                  <Badge tone="neutral" className={`font-mono text-[8px] uppercase tracking-wider ${RELATION_COLORS[s.relation] ?? ""}`}>
+                  </Chip>
+                  <Chip tone={AI_TONE.neutral} className={`font-mono text-[8px] uppercase tracking-wider ${RELATION_COLORS[s.relation] ?? ""}`}>
                     {s.origin === "RULE_BASED" ? "rule-based" : "AI"}
-                  </Badge>
+                  </Chip>
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">

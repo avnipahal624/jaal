@@ -11,7 +11,6 @@ import { AiStrategyPanel } from "@/components/analysis/AiStrategyPanel";
 import { DetectedTactics } from "@/components/analysis/DetectedTactics";
 import { CaseRail } from "@/components/investigation/CaseRail";
 import { WorkspaceHeader } from "@/components/investigation/WorkspaceHeader";
-import { Link } from "react-router";
 import { Panel } from "@/components/ui/panel";
 import { api } from "@/convex/_generated/api";
 import { useJaal } from "@/state/JaalProvider";

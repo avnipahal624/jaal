@@ -2,11 +2,10 @@ import { useQuery } from "convex/react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { statusStyle } from "@/theme/status";
+import { Chip } from "@/components/ui/panel";
 import { formatClock } from "@/utils/formatters";
 import { RefreshCw } from "lucide-react";
-import type { AiAnalysis } from "./AiIntelligencePage";
+import { AI_TONE, useRunModule } from "./AiActionRunner";
 
 const CATEGORY_LABELS: Record<string, string> = {
   SOCIAL_ENGINEERING: "Social engineering",
@@ -40,22 +39,15 @@ function SeverityPill({ severity }: { severity: string }) {
   );
 }
 
-export function ThreatView({
-  caseId,
-  analysis,
-  stale,
-}: {
-  caseId: string;
-  analysis: AiAnalysis | null;
-  stale: boolean;
-}) {
+export function ThreatView({ caseId }: { caseId: string }) {
   const navigate = useNavigate();
-  const latest = useQuery(api.intelligence.analyses, { caseId });
-  const run = async () => {
-    await api.intelligence.threatAnalysis({ caseId });
-  };
+  const runModule = useRunModule();
+  // Full stored row — includes the grounded `output` the list query omits.
+  const current = useQuery(api.intelligence.getAnalysis, { caseId, module: "threat" });
 
-  const current = latest?.analyses.find((a) => a.module === "threat") ?? null;
+  const run = async () => {
+    await runModule("threat", caseId);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -68,7 +60,7 @@ export function ThreatView({
           {!current ? (
             <Button
               onClick={run}
-              disabled={!latest}
+              disabled={current === undefined}
               className="font-mono text-[10px] uppercase tracking-wider bg-jcyan text-background hover:bg-jcyan/85"
             >
               <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -104,40 +96,40 @@ export function ThreatView({
           >
             <div className="flex flex-wrap items-center gap-2">
               {current.status === "COMPLETED" ? (
-                <Badge tone="success" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.success} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 12l2.5 2.5L16 6" />
                   </svg>
                   completed
-                </Badge>
+                </Chip>
               ) : current.status === "PROCESSING" ? (
-                <Badge tone="warning" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.warning} className="font-mono text-[9px] uppercase tracking-wider">
                   <RefreshCw className="size-3 animate-spin" />
                   processing
-                </Badge>
+                </Chip>
               ) : current.status === "FAILED" ? (
-                <Badge tone="error" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.error} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 9l-6 6M9 9l6 6" />
                   </svg>
                   failed
-                </Badge>
+                </Chip>
               ) : current.status === "UNAVAILABLE" ? (
-                <Badge tone="attention" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.attention} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4m0-4h.01" />
                   </svg>
                   unavailable
-                </Badge>
+                </Chip>
               ) : (
-                <Badge tone="neutral" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.neutral} className="font-mono text-[9px] uppercase tracking-wider">
                   not started
-                </Badge>
+                </Chip>
               )}
-              {stale && current.status === "COMPLETED" && (
+              {current.stale && current.status === "COMPLETED" && (
                 <span className="font-mono text-[8px] uppercase tracking-widest text-jamber">stale</span>
               )}
               {current.provider && current.model && (
@@ -187,9 +179,9 @@ export function ThreatView({
                       {CATEGORY_LABELS[f.category ?? ""] ?? f.category}
                     </span>
                     <SeverityPill severity={f.severity} />
-                    <Badge tone="neutral" className="font-mono text-[8px] uppercase tracking-wider">
+                    <Chip tone={AI_TONE.neutral} className="font-mono text-[8px] uppercase tracking-wider">
                       conf · {f.confidence}
-                    </Badge>
+                    </Chip>
                   </div>
                   <p className="mt-1 text-[11px] leading-relaxed text-jtext/90">{f.explanation}</p>
                   {f.recommendation && (
@@ -237,7 +229,7 @@ export function ThreatView({
           ) : current.status === "COMPLETED" ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 px-3 py-8 text-center">
               <svg className="size-10 text-jmuted/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09-3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
               </svg>
               <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted">No findings</p>
               <p className="font-mono text-[9px] text-jmuted/60">
@@ -249,11 +241,11 @@ export function ThreatView({
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 border-b border-jborder/40 px-3 py-6 text-center">
           <svg className="size-8 text-jmuted/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09-3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
           </svg>
           <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted">No analysis yet</p>
           <p className="font-mono text-[9px] text-jmuted/60">
-            {latest === undefined ? "Waiting for the case to load…" : "Hit Analyse to read the conversation."}
+            {current === undefined ? "Waiting for the case to load…" : "Hit Analyse to read the conversation."}
           </p>
         </div>
       )}

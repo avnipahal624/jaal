@@ -2,9 +2,9 @@ import { useQuery } from "convex/react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Chip } from "@/components/ui/panel";
 import { formatClock } from "@/utils/formatters";
-import type { AiAnalysis } from "./AiIntelligencePage";
+import { AI_TONE, useRunModule } from "./AiActionRunner";
 
 const CATEGORY_LABELS: Record<string, string> = {
   MONEY_REQUEST: "Money request",
@@ -50,22 +50,15 @@ function SeverityPill({ severity }: { severity: string }) {
   );
 }
 
-export function PredictionView({
-  caseId,
-  analysis,
-  stale,
-}: {
-  caseId: string;
-  analysis: AiAnalysis | null;
-  stale: boolean;
-}) {
+export function PredictionView({ caseId }: { caseId: string }) {
   const navigate = useNavigate();
-  const latest = useQuery(api.intelligence.analyses, { caseId });
-  const run = async () => {
-    await api.intelligence.prediction({ caseId });
-  };
+  const runModule = useRunModule();
+  // Full stored row — includes the grounded `output` the list query omits.
+  const current = useQuery(api.intelligence.getAnalysis, { caseId, module: "prediction" });
 
-  const current = latest?.analyses.find((a) => a.module === "prediction") ?? null;
+  const run = async () => {
+    await runModule("prediction", caseId);
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -78,7 +71,7 @@ export function PredictionView({
           {!current ? (
             <Button
               onClick={run}
-              disabled={!latest}
+              disabled={current === undefined}
               className="font-mono text-[10px] uppercase tracking-wider bg-jamber text-background hover:bg-jamber/85"
             >
               <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -114,42 +107,42 @@ export function PredictionView({
           <div className="border-b border-jborder/40 px-3 py-2" style={{ scrollMarginTop: "2rem" }}>
             <div className="flex flex-wrap items-center gap-2">
               {current.status === "COMPLETED" ? (
-                <Badge tone="success" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.success} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8 12l2.5 2.5L16 6" />
                   </svg>
                   completed
-                </Badge>
+                </Chip>
               ) : current.status === "PROCESSING" ? (
-                <Badge tone="warning" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.warning} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
                   </svg>
                   processing
-                </Badge>
+                </Chip>
               ) : current.status === "FAILED" ? (
-                <Badge tone="error" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.error} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 9l-6 6M9 9l6 6" />
                   </svg>
                   failed
-                </Badge>
+                </Chip>
               ) : current.status === "UNAVAILABLE" ? (
-                <Badge tone="attention" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.attention} className="font-mono text-[9px] uppercase tracking-wider">
                   <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <circle cx="12" cy="12" r="10" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v-4m0-4h.01" />
                   </svg>
                   unavailable
-                </Badge>
+                </Chip>
               ) : (
-                <Badge tone="neutral" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.neutral} className="font-mono text-[9px] uppercase tracking-wider">
                   not started
-                </Badge>
+                </Chip>
               )}
-              {stale && current.status === "COMPLETED" && (
+              {current.stale && current.status === "COMPLETED" && (
                 <span className="font-mono text-[8px] uppercase tracking-widest text-jamber">stale</span>
               )}
               {current.provider && current.model && (
@@ -174,13 +167,13 @@ export function PredictionView({
           {current.status === "COMPLETED" && current.output?.predictions && current.output.predictions.length > 0 ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
               <div className="mb-2 flex flex-wrap gap-2">
-                <Badge tone="neutral" className="font-mono text-[9px] uppercase tracking-wider">
+                <Chip tone={AI_TONE.neutral} className="font-mono text-[9px] uppercase tracking-wider">
                   PREDICTIONS · not observed events
-                </Badge>
+                </Chip>
                 {current.output.insufficientInformation && (
-                  <Badge tone="neutral" className="font-mono text-[9px] uppercase tracking-wider">
+                  <Chip tone={AI_TONE.neutral} className="font-mono text-[9px] uppercase tracking-wider">
                     insufficient information
-                  </Badge>
+                  </Chip>
                 )}
               </div>
 
@@ -197,9 +190,9 @@ export function PredictionView({
                     <span className={`font-mono text-[9px] uppercase tracking-widest ${CATEGORY_COLORS[p.category ?? ""] ?? ""}`}>
                       {CATEGORY_LABELS[p.category ?? ""] ?? p.category}
                     </span>
-                    <Badge tone="neutral" className="font-mono text-[8px] uppercase tracking-wider">
+                    <Chip tone={AI_TONE.neutral} className="font-mono text-[8px] uppercase tracking-wider">
                       conf · {p.confidence}
-                    </Badge>
+                    </Chip>
                     <SeverityPill severity={p.risk} />
                   </div>
                   <p className="mt-1 text-[11px] leading-relaxed text-jtext/90">{p.explanation}</p>
@@ -227,7 +220,7 @@ export function PredictionView({
               {current.output?.currentStrategy && (
                 <div className="mt-3 border-t border-jborder/40 px-1">
                   <p className="font-mono text-[8px] uppercase tracking-widest text-jmuted/60">Current strategy</p>
-                  <p className="mt-1 font-mono text-[11px] leading-relaxed text-jtext/90">{current.output.currentStrategy}</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-jtext/90">{current.output.currentStrategy}</p>
                 </div>
               )}
 
@@ -250,7 +243,7 @@ export function PredictionView({
           ) : current.status === "COMPLETED" ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 px-3 py-8 text-center">
               <svg className="size-10 text-jmuted/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09-3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
               </svg>
               <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted">No predictions</p>
               <p className="font-mono text-[9px] text-jmuted/60">
@@ -262,11 +255,11 @@ export function PredictionView({
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 border-b border-jborder/40 px-3 py-6 text-center">
           <svg className="size-8 text-jmuted/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L12 2.25l.813 2.846a4.5 4.5 0 003.09 3.09L18.75 12l-2.846.813a4.5 4.5 0 00-3.09-3.09zM12 6v.75m0 3h.75m-3 0h-.75" />
           </svg>
           <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted">No forecast yet</p>
           <p className="font-mono text-[9px] text-jmuted/60">
-            {latest === undefined ? "Waiting for the case to load…" : "Hit Forecast to see possible next moves."}
+            {current === undefined ? "Waiting for the case to load…" : "Hit Forecast to see possible next moves."}
           </p>
         </div>
       )}

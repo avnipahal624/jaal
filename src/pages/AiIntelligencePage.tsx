@@ -1,11 +1,12 @@
-import { useQueries } from "convex/react";
+import { useQuery } from "convex/react";
 import { useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { api } from "@/convex/_generated/api";
 import { Brain, Activity, MessageSquare, Link2, FileText, Clock, CheckCircle2, XCircle, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Chip } from "@/components/ui/panel";
 import { statusStyle } from "@/theme/status";
+import { AI_TONE } from "./AiActionRunner";
 import { ThreatView } from "./AiThreatView";
 import { PredictionView } from "./AiPredictionView";
 import { CopilotView } from "./AiCopilotView";
@@ -37,40 +38,32 @@ const MODULES = [
 type ModuleKey = (typeof MODULES)[number]["key"];
 
 function StatusBadge({ status }: { status: AiAnalysis["status"] }) {
-  if (status === "COMPLETED") return <Badge tone="success" className="font-mono text-[8px]"><CheckCircle2 className="size-2.5" /> d</Badge>;
-  if (status === "PROCESSING") return <Badge tone="warning" className="font-mono text-[8px]"><Loader2 className="size-2.5 animate-spin" /> p</Badge>;
-  if (status === "FAILED") return <Badge tone="error" className="font-mono text-[8px]"><XCircle className="size-2.5" /> f</Badge>;
-  if (status === "UNAVAILABLE") return <Badge tone="attention" className="font-mono text-[8px]"><Clock className="size-2.5" /> u</Badge>;
-  return <Badge tone="neutral" className="font-mono text-[8px]">· n</Badge>;
+  if (status === "COMPLETED") return <Chip tone={AI_TONE.success} className="font-mono text-[8px]"><CheckCircle2 className="size-2.5" /> d</Chip>;
+  if (status === "PROCESSING") return <Chip tone={AI_TONE.warning} className="font-mono text-[8px]"><Loader2 className="size-2.5 animate-spin" /> p</Chip>;
+  if (status === "FAILED") return <Chip tone={AI_TONE.error} className="font-mono text-[8px]"><XCircle className="size-2.5" /> f</Chip>;
+  if (status === "UNAVAILABLE") return <Chip tone={AI_TONE.attention} className="font-mono text-[8px]"><Clock className="size-2.5" /> u</Chip>;
+  return <Chip tone={AI_TONE.neutral} className="font-mono text-[8px]">· n</Chip>;
 }
 
 export function IntelligenceHub({
+  caseId,
   analyses,
   suggestions,
 }: {
+  caseId: string;
   analyses: AiAnalysis[];
   suggestions: { pending: number; total: number } | null;
 }) {
   const [active, setActive] = useState<ModuleKey>("threat");
 
-  const queries = useQueries(
-    MODULES.map((m) => ({
-      id: `ai-${m.key}`,
-      queryKey: [api.intelligence.getAnalysis, "" + analyses[0]?.caseId, m.key],
-      queryFn: () => api.intelligence.getAnalysis({ caseId: "" + analyses[0]?.caseId, module: m.key }),
-      stale: false,
-    })),
+  const rows = useMemo(
+    () =>
+      MODULES.map((m) => ({
+        ...m,
+        state: analyses.find((a) => a.module === m.key) ?? null,
+      })),
+    [analyses],
   );
-
-  const rows = useMemo(() => {
-    const byModule = new Map<ModuleKey, AiAnalysis | null>();
-    for (const a of analyses) byModule.set(a.module as ModuleKey, a);
-    return MODULES.map((m) => ({
-      ...m,
-      state: byModule.get(m.key) ?? null,
-      result: queries.find((q) => q.queryKey[2] === m.key)?.data ?? null,
-    }));
-  }, [analyses, queries]);
 
   return (
     <div>
@@ -106,51 +99,40 @@ export function IntelligenceHub({
 
       <div className="flex flex-col" style={{ minHeight: 0 }}>
         <div className="flex flex-wrap gap-2 overflow-x-auto py-2">
-          {MODULES.map((m) => {
-            const state = m.state;
-            const result = m.result;
-            const done = state?.status === "COMPLETED" || (result?.status === "COMPLETED");
-            return (
-              <button
-                key={m.key}
-                type="button"
-                onClick={() => setActive(m.key)}
-                className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors ${
-                  active === m.key
-                    ? "border-jcyan/60 bg-jcyan/5"
-                    : "border-jborder/50 bg-jsurface/40 hover:border-jborder/70 hover:bg-jsurface/70"
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <span className={`flex size-6 items-center justify-center rounded-md border ${m.accent} ${m.bg}`}>
-                    <m.icon className={`size-3.5 ${m.color}`} />
-                  </span>
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-jtext">{m.label}</span>
-                </div>
-                <p className="text-[10px] leading-relaxed text-jmuted/70">{m.desc}</p>
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={state?.status ?? "NOT_STARTED"} />
-                  {state?.status === "COMPLETED" || state?.status === "PROCESSING" ? (
-                    <span className="font-mono text-[8px] text-jmuted/50">{state?.status === "COMPLETED" ? "ready" : "processing"}</span>
-                  ) : null}
-                </div>
-              </button>
-            );
-          })}
+          {rows.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setActive(m.key)}
+              className={`flex flex-col items-start gap-1.5 border px-3 py-2.5 text-left transition-colors ${
+                active === m.key
+                  ? "border-jcyan/60 bg-jcyan/5"
+                  : "border-jborder/50 bg-jsurface/40 hover:border-jborder/70 hover:bg-jsurface/70"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`flex size-6 items-center justify-center rounded-md border ${m.accent} ${m.bg}`}>
+                  <m.icon className={`size-3.5 ${m.color}`} />
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-jtext">{m.label}</span>
+              </div>
+              <p className="text-[10px] leading-relaxed text-jmuted/70">{m.desc}</p>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={m.state?.status ?? "NOT_STARTED"} />
+                {m.state?.status === "COMPLETED" || m.state?.status === "PROCESSING" ? (
+                  <span className="font-mono text-[8px] text-jmuted/50">{m.state.status === "COMPLETED" ? "ready" : "processing"}</span>
+                ) : null}
+              </div>
+            </button>
+          ))}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {active === "threat" && (
-            <ThreatView caseId={useParams().id ?? ""} analysis={rows.find((r) => r.key === "threat")?.state as AiAnalysis | null} stale={rows.find((r) => r.key === "threat")?.state?.stale ?? false} />
-          )}
-          {active === "prediction" && (
-            <PredictionView caseId={useParams().id ?? ""} analysis={rows.find((r) => r.key === "prediction")?.state as AiAnalysis | null} stale={rows.find((r) => r.key === "prediction")?.state?.stale ?? false} />
-          )}
-          {active === "copilot" && <CopilotView caseId={useParams().id ?? ""} />}
-          {active === "correlation" && <CorrelationView caseId={useParams().id ?? ""} suggestions={suggestions ?? null} />}
-          {active === "report" && (
-            <ReportView caseId={useParams().id ?? ""} analysis={rows.find((r) => r.key === "report")?.state as AiAnalysis | null} stale={rows.find((r) => r.key === "report")?.state?.stale ?? false} />
-          )}
+          {active === "threat" && <ThreatView caseId={caseId} />}
+          {active === "prediction" && <PredictionView caseId={caseId} />}
+          {active === "copilot" && <CopilotView caseId={caseId} />}
+          {active === "correlation" && <CorrelationView caseId={caseId} suggestions={suggestions ?? null} />}
+          {active === "report" && <ReportView caseId={caseId} />}
         </div>
       </div>
     </div>
@@ -163,37 +145,22 @@ function endings(n: number): string {
 
 export default function AiIntelligencePage() {
   const { id } = useParams<{ id: string }>();
-  const [suggestions, setSuggestions] = useState<{ pending: number; total: number } | null>(null);
+  const caseId = id ?? "";
 
-  const analysesQuery = useQueries(
-    ([id].filter(Boolean) as [string])
-      .map((id) => ({ caseId: id! }))
-      .map(({ caseId }) => ({
-        queryKey: [api.intelligence.analyses, caseId],
-        queryFn: () => api.intelligence.analyses({ caseId }),
-        stale: false,
-      })),
-  );
-  const analyses = analysesQuery.map((q) => q.data as AiAnalysis[]).filter((x): x is AiAnalysis[] => Array.isArray(x));
+  const analysisData = useQuery(api.intelligence.analyses, { caseId });
+  const suggestionData = useQuery(api.intelligence.suggestions, { caseId });
 
-  const suggestionsQuery = useQueries([
-    {
-      queryKey: [api.intelligence.suggestions, id],
-      queryFn: () => api.intelligence.suggestions({ caseId: id ?? "" }),
-      stale: false,
-    },
-  ]).find((q) => q.data)?.data as { pendingSuggestions: number; suggestions: unknown[] } | null;
+  const analyses: AiAnalysis[] = useMemo(() => analysisData?.analyses ?? [], [analysisData]);
+
+  const suggestions = useMemo(() => {
+    if (!analysisData || !suggestionData) return null;
+    const pending = suggestionData.suggestions.filter((s) => s.status === "PENDING_REVIEW").length;
+    return { pending, total: suggestionData.suggestions.length };
+  }, [analysisData, suggestionData]);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <IntelligenceHub
-        analyses={analyses[0] ?? []}
-        suggestions={
-          suggestionsQuery
-            ? { pending: suggestionsQuery.pendingSuggestions, total: suggestionsQuery.suggestions.length }
-            : null
-        }
-      />
+      <IntelligenceHub caseId={caseId} analyses={analyses} suggestions={suggestions} />
     </div>
   );
 }
