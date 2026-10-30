@@ -38,16 +38,95 @@ export const SCHEMA_VERSION = 1;
 export const MAX_LOG_DOCS = 400;
 export const MAX_EVENT_DOCS = 250;
 
+// Input / abuse limits (enforced server-side regardless of client validation).
+export const MAX_MESSAGE_LENGTH = 4_000;
+export const MAX_TRANSCRIPT_CHARS = 100_000;
+export const MAX_IMPORT_MESSAGES = 500;
+export const MAX_MESSAGES_PER_CASE = 600;
+export const MAX_EVIDENCE_PER_CASE = 300;
+export const MAX_TITLE_LENGTH = 160;
+export const MAX_NOTES_LENGTH = 4_000;
+export const MAX_REPORT_MESSAGES = 300;
+// AI action budget: per-owner rolling window.
+export const AI_RATE_WINDOW_MS = 60_000;
+export const AI_RATE_MAX = 8;
+export const AI_MAX_TRANSCRIPT_MESSAGES = 40;
+export const AI_MAX_MESSAGE_CHARS = 1_200;
+export const AI_MAX_TOTAL_CHARS = 16_000;
+
 export function rid(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/** Identity subject of the caller; simulation users share the "demo" owner. */
+/**
+ * Identity subject of the caller. AUTHENTICATION IS MANDATORY: there is no
+ * shared fallback owner. Signed-out callers get a rejection, never a
+ * predictable owner ID. Guest/simulation sessions obtain their own unique
+ * owner by signing in with the Convex Auth Anonymous provider (see
+ * `signInDemo` in src/state/JaalProvider.tsx), so one guest can never see
+ * another guest's (or the seeded demo baseline's) records.
+ *
+ * The owner string always comes from the server-validated Convex Auth JWT —
+ * never from a frontend-supplied argument.
+ */
 export async function getOwner(ctx: {
   auth: { getUserIdentity(): Promise<{ subject: string } | null> };
 }): Promise<string> {
   const identity = await ctx.auth.getUserIdentity();
-  return identity?.subject ?? "demo";
+  if (!identity?.subject) {
+    throw new Error(
+      "Not authenticated — an identity is required to access JAAL data.",
+    );
+  }
+  return identity.subject;
+}
+
+/** Throw a consistent authorization error for length/size violations. */
+export function assertLength(
+  value: string,
+  max: number,
+  what: string,
+): string {
+  if (value.length > max) {
+    throw new Error(`${what} exceeds the maximum length of ${max} characters.`);
+  }
+  return value;
+}
+
+/**
+ * Mask an identifier for places where the full value is unnecessary
+ * (dashboard previews, shared activity lists). The full value stays in the
+ * owner-scoped case data.
+ */
+export function maskIdentifier(type: string, value: string): string {
+  switch (type) {
+    case "phone": {
+      const digits = value.replace(/\D/g, "");
+      if (digits.length >= 4) {
+        return `${"•".repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+      }
+      return "••••";
+    }
+    case "upi": {
+      const at = value.indexOf("@");
+      if (at > 1) return `${value.slice(0, 1)}•••${value.slice(at)}`;
+      return "•••";
+    }
+    case "email": {
+      const at = value.indexOf("@");
+      if (at > 0) return `${value.slice(0, 1)}•••${value.slice(at)}`;
+      return "•••";
+    }
+    case "payment_request":
+      return value.length > 12 ? `${value.slice(0, 6)}…` : value;
+    case "url": {
+      // Keep the host visible for triage; drop query/path details.
+      const m = value.match(/^(https?:\/\/[^/?#]+)/i);
+      return m ? `${m[1]}/…` : value;
+    }
+    default:
+      return value;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +138,7 @@ const HASH_STATUS_MAP = {
   HASH_GENERATED: "generated",
   INTEGRITY_VERIFIED: "verified",
   HASH_MISMATCH: "mismatch",
+  TAMPER_SIMULATION: "tampered",
 } as const;
 
 export function docToMessage(
@@ -91,6 +171,8 @@ export function docToEvidence(doc: Doc<"evidence">): EvidenceItem {
     hash: doc.integrityHash ?? null,
     hashGeneratedAt: doc.hashGeneratedAt ?? null,
     hashStatus: HASH_STATUS_MAP[doc.integrityStatus],
+    detectionMethod: doc.extractionMethod ?? null,
+    confidence: doc.confidence ?? null,
     tampered: doc.tampered,
     reviewStatus: doc.reviewStatus ?? null,
     reviewNote: doc.reviewNote ?? null,
@@ -279,8 +361,9 @@ export async function processMessage(
       extractedValue: draft.value,
       normalizedValue: draft.value.toLowerCase(),
       content: item.content,
-      extractionMethod: "RULE_BASED_REGEX",
+      extractionMethod: draft.method,
       extractionTimestamp: message.timestamp,
+      confidence: draft.confidence,
       integrityHash,
       integrityAlgorithm: integrityHash ? "SHA-256" : undefined,
       integrityStatus: integrityHash ? "HASH_GENERATED" : "NOT_HASHED",
@@ -644,6 +727,92 @@ export async function loadSettings(
     investigation: { ...DEFAULT_SETTINGS.investigation, ...doc.investigation },
     simulation: { ...DEFAULT_SETTINGS.simulation, ...doc.simulation },
   } as Settings;
+}
+
+/**
+ * Mask identifiers that appear inside free text (event previews, dashboard
+ * activity). Used where the full value is unnecessary for the viewer.
+ */
+export function maskSensitiveText(text: string): string {
+  return text
+    .replace(/(?:\+91[\s-]?)?\b[6-9]\d{4}[\s-]?\d{5}\b/g, (m) =>
+      maskIdentifier("phone", m),
+    )
+    .replace(/\b[a-z0-9][a-z0-9._-]{2,}@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}\b/gi, (m) =>
+      m.includes(".") && m.split("@")[1]?.includes(".")
+        ? maskIdentifier("email", m)
+        : maskIdentifier("upi", m),
+    )
+    .replace(/\b[a-z0-9][a-z0-9._-]{2,}@[a-z][a-z0-9]{2,}\b/gi, (m) =>
+      maskIdentifier("upi", m),
+    )
+    .replace(/https?:\/\/[^\s,;"')\]]+/gi, (m) => maskIdentifier("url", m));
+}
+
+// ---------------------------------------------------------------------------
+// Evidence manifests (deterministic, canonically serialized)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stable JSON serialization: object keys sorted recursively, no insignificant
+ * whitespace. Two structurally equal manifests always serialize identically.
+ */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value ?? null);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys
+    .map((k) => `${JSON.stringify(k)}:${canonicalJson(record[k])}`)
+    .join(",")}}`;
+}
+
+/**
+ * Evidence-defining subset that is covered by the manifest hash. Changing any
+ * of these fields (content, source linkage, recorded hash, case identity)
+ * changes `manifestCoreHash`. Review verdicts, analyst notes and the
+ * append-only histories are part of the stored manifest document but are NOT
+ * hashed — they are expected to change through legitimate supported
+ * operations (a review or a verification must not break integrity).
+ */
+export function evidenceManifestCore(doc: Doc<"evidence">, creator: string) {
+  return {
+    evidenceId: doc._id,
+    caseId: doc.caseId,
+    evidenceType: doc.evidenceType,
+    sourceMessageId: doc.sourceMessageId ?? null,
+    contentSnapshot: doc.content,
+    originalSnapshot: doc.originalContent ?? doc.content,
+    extractedValue: doc.extractedValue,
+    hashAlgorithm: doc.integrityAlgorithm ?? null,
+    recordedHash: doc.integrityHash ?? null,
+    createdAt: doc.createdAt,
+    createdBy: creator,
+  };
+}
+
+/** Full manifest document (core + histories) stored on the evidence row. */
+export function evidenceManifest(doc: Doc<"evidence">, creator: string) {
+  return {
+    ...evidenceManifestCore(doc, creator),
+    algorithm: "SHA-256",
+    manifestVersion: 1,
+    verificationHistory: doc.verificationHistory ?? [],
+    modificationHistory: doc.contentHistory ?? [],
+    hashHistory: doc.hashHistory ?? [],
+  };
+}
+
+/** Canonical bytes that get SHA-256-hashed for `manifestHash` (async crypto
+ *  happens at the call site via sha256Hex). */
+export function manifestCoreBytes(
+  core: ReturnType<typeof evidenceManifestCore>,
+): string {
+  return canonicalJson(core);
 }
 
 export type { Doc, Id, Settings, EvidenceReport, Investigation };

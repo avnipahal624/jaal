@@ -30,6 +30,7 @@ const HASH_TEXT: Record<EvidenceItem["hashStatus"], string> = {
   generated: "hashed",
   verified: "verified",
   mismatch: "mismatch",
+  tampered: "tamper sim",
 };
 
 /** Compact evidence row: type, value, source message, timestamp, integrity. */
@@ -53,7 +54,7 @@ function EvidenceRow({
       onClick={onOpen}
       className={cn(
         "flex w-full items-start gap-2 border-l-2 bg-jsurface/40 px-2 py-1.5 text-left transition-colors hover:bg-white/[0.03]",
-        item.hashStatus === "mismatch"
+        item.hashStatus === "mismatch" || item.tampered
           ? "border-l-jred/70"
           : "border-l-jcyan/60",
       )}

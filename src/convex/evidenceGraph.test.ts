@@ -160,7 +160,7 @@ describe("evidenceGraph.getByInvestigation", () => {
     // Every node maps 1:1 to a persisted record of this investigation.
     // (Tactic client ids are composite `tactic:messageId` — cross-check the
     // graph against the tactics table itself, which is the source of truth.)
-    const state = await user.query(api.jaal.state);
+    const state = (await user.query(api.jaal.state))!;
     const rt = state.sessions["JAAL-200"]!;
     const msgIds = new Set(
       rt.messages.filter((m) => m.author !== "system").map((m) => m.id),
@@ -232,7 +232,7 @@ describe("evidenceGraph.getByInvestigation", () => {
       api.evidenceGraph.getByInvestigation,
       { investigationId: "JAAL-200" },
     );
-    const state = await user.query(api.jaal.state);
+    const state = (await user.query(api.jaal.state))!;
     const rt = state.sessions["JAAL-200"]!;
 
     const preserved = graph.edges.filter((e) => e.type === "PRESERVED_AS");
@@ -348,7 +348,7 @@ describe("evidenceGraph.getByInvestigation", () => {
     );
     expect(aliceGraph.nodes.length).toBeGreaterThan(0);
     // Same-owner other case: its records must not leak into this graph.
-    const state = await alice.query(api.jaal.state);
+    const state = (await alice.query(api.jaal.state))!;
     const thisCaseEvidence = new Set(
       state.sessions["JAAL-201"]!.evidence.map((e) => e.id),
     );

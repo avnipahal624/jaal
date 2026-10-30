@@ -14,10 +14,16 @@ export function buildReport(
   const integrity = runtime.evidence.reduce(
     (acc, item) => {
       acc.collected += 1;
-      if (item.hashStatus === "generated" || item.hashStatus === "verified" || item.hashStatus === "mismatch")
+      if (
+        item.hashStatus === "generated" ||
+        item.hashStatus === "verified" ||
+        item.hashStatus === "mismatch" ||
+        item.hashStatus === "tampered"
+      )
         acc.hashed += 1;
       if (item.hashStatus === "verified") acc.verified += 1;
-      if (item.hashStatus === "mismatch") acc.mismatched += 1;
+      if (item.hashStatus === "mismatch" || item.hashStatus === "tampered")
+        acc.mismatched += 1;
       if (item.hashStatus === "none") acc.unhashed += 1;
       return acc;
     },
@@ -29,6 +35,53 @@ export function buildReport(
     messageNumbers[m.id] = i + 1;
   });
 
+  // ---- Provenance: keep finding classes explicitly separated --------------
+  const strategyIsAi = runtime.strategy?.source === "ANTHROPIC";
+  const reviewed = runtime.evidence.filter(
+    (e) => e.reviewStatus === "confirmed" || e.reviewStatus === "incorrect",
+  );
+  const provenance: NonNullable<EvidenceReport["provenance"]> = {
+    conversation:
+      "Verbatim messages as stored in the case record (original conversation evidence).",
+    ruleBased: [
+      "Scam tactics — rule-based content pattern detection (no model involved).",
+      "Extracted indicators — rule-based regex extraction with validation; see detectionMethod on each row.",
+      "Kill-chain stage progression — content-derived stage detection.",
+      strategyIsAi
+        ? "Strategy superseded by an AI-assisted suggestion (see AI-assisted)."
+        : "Investigation strategy — deterministic rule engine over the conversation state.",
+    ],
+    aiAssisted: strategyIsAi
+      ? ["Investigation strategy suggestion — Anthropic Claude (validated structured output)."]
+      : [],
+    humanReviewed: reviewed.length
+      ? reviewed.map(
+          (e) =>
+            `${e.label}: ${e.value} — ${e.reviewStatus}${
+              e.reviewNote ? ` (${e.reviewNote})` : ""
+            }`,
+        )
+      : [],
+    unverifiedAssumptions: [
+      "Tactic detections are heuristic pattern matches — they do not prove intent or guilt.",
+      "Extracted identifiers were not checked against any external authority; they may be synthetic or spoofed.",
+      "Timestamps reflect recorded session times, not independently attested times.",
+      "A matching SHA-256 shows content is unchanged since recording — not authorship, origin, or legal admissibility.",
+    ],
+    simulationOnly: [
+      "Scammer replies in simulation-sourced cases are scripted (SIM-ENGINE) — no real scammer was contacted.",
+      "Identifiers in simulation-sourced cases are synthetic demo values.",
+    ],
+  };
+  if (provenance.aiAssisted.length === 0) {
+    provenance.aiAssisted.push(
+      "None — no AI-assisted interpretation was produced for this case.",
+    );
+  }
+  if (provenance.humanReviewed.length === 0) {
+    provenance.humanReviewed.push("No analyst review verdicts recorded yet.");
+  }
+
   return {
     id: `RPT-${investigation.id.replace("JAAL-", "")}-${now.toString(36).toUpperCase().slice(-5)}`,
     caseId: investigation.id,
@@ -37,6 +90,8 @@ export function buildReport(
     generatedAt: now,
     generatedBy,
     simulated: true,
+    hashAlgorithm: "SHA-256",
+    provenance,
     status: investigation.status,
     currentStage: runtime.stages.find((s) => s.status === "active")?.id ?? investigation.currentStage,
     evidenceCount: runtime.evidence.length,
@@ -85,6 +140,9 @@ export function buildReport(
         e.sourceMessageId != null
           ? (messageNumbers[e.sourceMessageId] ?? null)
           : null,
+      hashAlgorithm: e.hash ? "SHA-256" : null,
+      confidence: e.confidence ?? null,
+      detectionMethod: e.detectionMethod ?? null,
     })),
     timeline: runtime.activities.map((a) => ({
       timestamp: a.timestamp,
@@ -99,12 +157,14 @@ export function buildReport(
       status: e.hashStatus,
       note:
         e.hashStatus === "verified"
-          ? "Content matches the recorded hash. This confirms content integrity only — not authenticity."
-          : e.hashStatus === "mismatch"
-            ? "Content no longer matches the recorded hash."
-            : e.hashStatus === "generated"
-              ? "Hash recorded. Run verification to compare content against it."
-              : "Evidence collected. No hash recorded yet.",
+          ? "Content matches the recorded hash. This confirms content integrity only — not authenticity."              : e.hashStatus === "mismatch"
+                ? "Content no longer matches the recorded hash."
+                : e.hashStatus === "tampered"
+                  ? "Content altered through the tamper simulation — original snapshot and hash preserved. Re-run verification to confirm the mismatch."
+                  : e.hashStatus === "generated"
+                    ? "Hash recorded. Independent verification against this baseline has not yet been run."
+                    : "Evidence collected. No hash recorded yet.",
+      hashAlgorithm: e.hash ? "SHA-256" : null,
     })),
     analystNotes:
       investigation.notes ||

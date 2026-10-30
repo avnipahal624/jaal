@@ -17,7 +17,9 @@ const FLAGS = {
 } as const;
 
 function setup() {
-  return convexTest(schema, modules);
+  // The backend rejects unauthenticated callers — tests run as an
+  // authenticated operator identity (cross-owner cases use withIdentity).
+  return convexTest(schema, modules).withIdentity({ subject: "test-operator" });
 }
 
 async function createCase(
@@ -41,7 +43,7 @@ describe("investigation management", () => {
   it("creates a case with a seeded opening message, contact stage and running status", async () => {
     const t = setup();
     await createCase(t);
-    const state = await t.query(api.jaal.state);
+    const state = (await t.query(api.jaal.state))!;
     expect(state.investigations).toHaveLength(1);
     const inv = state.investigations[0]!;
     expect(inv.id).toBe("JAAL-100");
@@ -89,7 +91,7 @@ describe("investigation management", () => {
       text: "Why is a payment required?",
     });
     await t.mutation(api.jaal.archiveInvestigation, { caseId: "JAAL-100" });
-    const state = await t.query(api.jaal.state);
+    const state = (await t.query(api.jaal.state))!;
     expect(state.investigations[0]!.status).toBe("archived");
     expect(state.sessions["JAAL-100"]!.evidence.length).toBeGreaterThan(0);
   });
@@ -105,7 +107,7 @@ describe("conversation processing", () => {
     });
     expect(result.reply).toBeTruthy();
 
-    const state = await t.query(api.jaal.state);
+    const state = (await t.query(api.jaal.state))!;
     const rt = state.sessions["JAAL-100"]!;
 
     // Conversation: seeded opener + decoy + scammer reply.
@@ -155,12 +157,12 @@ describe("conversation processing", () => {
   it("returns the next scripted scammer line on simulationNext", async () => {
     const t = setup();
     await createCase(t);
-    const before = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const before = ((await t.query(api.jaal.state))!).sessions["JAAL-100"]!;
     const result = await t.mutation(api.jaal.simulationNext, {
       caseId: "JAAL-100",
     });
     expect(result.reply).toBeTruthy();
-    const after = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const after = ((await t.query(api.jaal.state))!).sessions["JAAL-100"]!;
     expect(after.messages.length).toBe(before.messages.length + 1);
   });
 
@@ -176,7 +178,7 @@ describe("conversation processing", () => {
       caseId: "JAAL-100",
       text: "Type the UPI handle again, please.",
     });
-    const rt = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const rt = ((await t.query(api.jaal.state))!).sessions["JAAL-100"]!;
     const upi = rt.evidence.filter(
       (e) => e.type === "upi" && e.value.toLowerCase() === "cyber.verify@jaaldemo",
     );
@@ -216,7 +218,7 @@ describe("evidence integrity", () => {
       caseId: "JAAL-100",
       text: "Deposit ₹25,000 to continue verification.",
     });
-    const rt = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const rt = ((await t.query(api.jaal.state))!).sessions["JAAL-100"]!;
     const ev = rt.evidence.find((e) => e.type === "payment_request")!;
 
     // Untampered content verifies.
@@ -244,7 +246,7 @@ describe("evidence integrity", () => {
       caseId: "JAAL-100",
       text: "Which department are you from?",
     });
-    const rt = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const rt = ((await t.query(api.jaal.state))!).sessions["JAAL-100"]!;
     const phone = rt.evidence.find((e) => e.type === "phone")!;
     expect(phone.hash).toMatch(/^[0-9a-f]{64}$/i);
 
@@ -261,7 +263,7 @@ describe("evidence integrity", () => {
       caseId: "JAAL-100",
       text: "Pay ₹500 via UPI.",
     });
-    const rt = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const rt = ((await t.query(api.jaal.state))!).sessions["JAAL-100"]!;
     const ev = rt.evidence.find((e) => e.type === "payment_request")!;
     const before = ev.content;
     await t.mutation(api.jaal.setEvidenceNotes, {
@@ -272,7 +274,7 @@ describe("evidence integrity", () => {
       evidenceId: ev.id as never,
     });
     expect(verify).toBe("match"); // content untouched → still verifies
-    const after = (await t.query(api.jaal.state)).sessions["JAAL-100"]!;
+    const after = ((await t.query(api.jaal.state))!).sessions["JAAL-100"]!;
     const updated = after.evidence.find((e) => e.id === ev.id)!;
     expect(updated.content).toBe(before);
     expect(updated.notes).toContain("compare with JAAL-002");
@@ -289,7 +291,7 @@ describe("completion and reports", () => {
     });
     await t.mutation(api.jaal.completeInvestigation, { caseId: "JAAL-100" });
 
-    const state = await t.query(api.jaal.state);
+    const state = (await t.query(api.jaal.state))!;
     expect(state.investigations[0]!.status).toBe("completed");
     expect(state.reports).toHaveLength(1);
     const report = state.reports[0]!;
@@ -312,7 +314,7 @@ describe("settings", () => {
       investigation: { autoHash: false, defaultCategory: "Phishing" },
       appearance: { density: "compact" },
     });
-    const state = await t.query(api.jaal.state);
+    const state = (await t.query(api.jaal.state))!;
     expect(state.settings.investigation.autoHash).toBe(false);
     expect(state.settings.investigation.defaultCategory).toBe("Phishing");
     expect(state.settings.appearance.density).toBe("compact");
@@ -325,17 +327,17 @@ describe("demo data", () => {
   it("seeds and resets the synthetic demo cases", async () => {
     const t = setup();
     await t.mutation(api.jaal.seedDemo, {});
-    const seeded = await t.query(api.jaal.state);
+    const seeded = (await t.query(api.jaal.state))!;
     expect(seeded.investigations.length).toBeGreaterThanOrEqual(4);
     expect(seeded.investigations.some((i) => i.id === "JAAL-001")).toBe(true);
 
     // Operator-created cases exist before the reset…
     await createCase(t, "JAAL-100");
-    expect((await t.query(api.jaal.state)).investigations).toHaveLength(5);
+    expect(((await t.query(api.jaal.state))!).investigations).toHaveLength(5);
 
     // …and resetDemo wipes everything back to the clean seeded demo state.
     await t.mutation(api.jaal.resetDemo, {});
-    const cleared = await t.query(api.jaal.state);
+    const cleared = (await t.query(api.jaal.state))!;
     expect(cleared.investigations.some((i) => i.id === "JAAL-100")).toBe(false);
     expect(cleared.investigations.some((i) => i.id === "JAAL-001")).toBe(true);
     expect(
@@ -362,7 +364,7 @@ describe("authorization", () => {
     });
 
     // Bob sees nothing of Alice's work.
-    const bobState = await bob.query(api.jaal.state);
+    const bobState = (await bob.query(api.jaal.state))!;
     expect(bobState.investigations).toHaveLength(0);
 
     // Bob cannot read or mutate Alice's case.
@@ -377,7 +379,7 @@ describe("authorization", () => {
     ).rejects.toThrow(/not found/);
 
     // Alice retains access.
-    const aliceState = await alice.query(api.jaal.state);
+    const aliceState = (await alice.query(api.jaal.state))!;
     expect(aliceState.investigations).toHaveLength(1);
   });
 });
@@ -390,7 +392,7 @@ describe("analyst review + report completeness", () => {
       caseId: "JAAL-300",
       text: "Why is a payment required?",
     });
-    const state = await t.query(api.jaal.state);
+    const state = (await t.query(api.jaal.state))!;
     const item = state.sessions["JAAL-300"]!.evidence[0]!;
     expect(item).toBeDefined();
     const originalValue = item.value;
@@ -402,7 +404,7 @@ describe("analyst review + report completeness", () => {
       note: "checked against transcript",
     });
 
-    const after = await t.query(api.jaal.state);
+    const after = (await t.query(api.jaal.state))!;
     const reviewed = after.sessions["JAAL-300"]!.evidence.find(
       (e) => e.id === item.id,
     )!;
@@ -446,7 +448,7 @@ describe("analyst review + report completeness", () => {
     });
     await t.mutation(api.jaal.completeInvestigation, { caseId: "JAAL-301" });
     await t.mutation(api.jaal.completeInvestigation, { caseId: "JAAL-301" });
-    const state = await t.query(api.jaal.state);
+    const state = (await t.query(api.jaal.state))!;
     expect(state.reports.filter((r) => r.caseId === "JAAL-301")).toHaveLength(1);
   });
 });

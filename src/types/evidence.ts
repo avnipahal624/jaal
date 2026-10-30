@@ -15,9 +15,10 @@ export type EvidenceType =
  */
 export type HashStatus =
   | "none" // evidence collected, no hash yet
-  | "generated" // hash recorded
+  | "generated" // hash recorded — NOT yet independently verified
   | "verified" // recomputed hash matches recorded hash
-  | "mismatch"; // recomputed hash differs from recorded hash
+  | "mismatch" // recomputed hash differs from recorded hash
+  | "tampered"; // content altered through the explicit tamper-simulation path
 
 /** Analyst verdict — stored separately from the original extraction. */
 export type EvidenceReviewStatus = "confirmed" | "incorrect" | "needs_review";
@@ -41,6 +42,10 @@ export interface EvidenceItem {
   hash: string | null;
   hashGeneratedAt: number | null;
   hashStatus: HashStatus;
+  /** How the indicator was found, e.g. RULE_BASED_REGEX:url_obfuscated. */
+  detectionMethod?: string | null;
+  /** Heuristic extraction confidence in [0,1] — a review aid, not a fraud verdict. */
+  confidence?: number | null;
   /** Set when the analyst edited content on purpose to demo a mismatch */
   tampered?: boolean;
   reviewStatus?: EvidenceReviewStatus | null;

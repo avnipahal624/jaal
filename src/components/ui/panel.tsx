@@ -79,6 +79,7 @@ export const HASH_STYLE: Record<HashStatus, StatusStyle> = {
   generated: statusStyle("integrity", "generated"),
   verified: statusStyle("integrity", "verified"),
   mismatch: statusStyle("integrity", "mismatch"),
+  tampered: statusStyle("integrity", "tampered"),
 };
 
 export const HASH_LABEL: Record<HashStatus, string> = {
@@ -86,6 +87,7 @@ export const HASH_LABEL: Record<HashStatus, string> = {
   generated: "Hash generated",
   verified: "Integrity verified",
   mismatch: "Hash mismatch",
+  tampered: "Tamper simulation",
 };
 
 export function Chip({

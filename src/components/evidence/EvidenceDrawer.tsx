@@ -24,6 +24,7 @@ import {
   ExternalLink,
   FileWarning,
   Fingerprint,
+  History,
   Loader2,
   Pencil,
   ShieldCheck,
@@ -54,12 +55,17 @@ export function EvidenceDrawer({
   const {
     generateHash,
     verifyEvidence,
+    rebaselineEvidence,
     setEvidenceContent,
     setEvidenceNotes,
     reviewEvidence,
   } = useJaal();
-  const [busy, setBusy] = useState<null | "hash" | "verify">(null);
-  const [result, setResult] = useState<null | "match" | "mismatch" | "error">(null);
+  const [busy, setBusy] = useState<null | "hash" | "verify" | "rebaseline">(null);
+  const [rebaselineOpen, setRebaselineOpen] = useState(false);
+  const [rebaselineReason, setRebaselineReason] = useState("");
+  const [result, setResult] = useState<
+    null | "match" | "mismatch" | "generated" | "error"
+  >(null);
   const [editing, setEditing] = useState(false);
   const [draftContent, setDraftContent] = useState("");
   const [notes, setNotes] = useState("");
@@ -85,10 +91,14 @@ export function EvidenceDrawer({
 
   const handleHash = async () => {
     setBusy("hash");
-    await generateHash(caseId, item.id);
+    const ok = await generateHash(caseId, item.id);
     setBusy(null);
-    setResult(null);
-    toast.success("SHA-256 hash generated", { duration: 1600 });
+    if (ok) {
+      setResult(null);
+      toast.success("SHA-256 hash generated — not yet verified", {
+        duration: 2200,
+      });
+    }
   };
 
   const handleVerify = async () => {
@@ -96,8 +106,31 @@ export function EvidenceDrawer({
     const outcome = await verifyEvidence(caseId, item.id);
     setBusy(null);
     setResult(outcome);
-    if (outcome === "error" && !item.hash) {
-      toast.info("No recorded hash yet — one was generated from current content.");
+    if (outcome === "generated") {
+      toast.info(
+        "No recorded hash existed — one was generated from current content. Independent verification has not yet been performed.",
+        { duration: 3400 },
+      );
+    }
+  };
+
+  const handleRebaseline = async () => {
+    const reason = rebaselineReason.trim();
+    if (reason.length < 3) {
+      toast.error("A recorded reason is required to re-baseline a hash.");
+      return;
+    }
+    setBusy("rebaseline");
+    const ok = await rebaselineEvidence(caseId, item.id, reason);
+    setBusy(null);
+    if (ok) {
+      setRebaselineOpen(false);
+      setRebaselineReason("");
+      setResult(null);
+      toast.success(
+        "Hash re-baselined with a recorded reason — re-run verification to check the new baseline.",
+        { duration: 3400 },
+      );
     }
   };
 
@@ -214,6 +247,13 @@ export function EvidenceDrawer({
               </p>
             )}
 
+            <p className="mt-2 border-l-2 border-jteal/50 pl-2 text-[10px] leading-relaxed text-jmuted/80">
+              SHA-256 proves this content matches the recorded baseline — it
+              does not prove who created it, that the source message is
+              genuine, that timestamps are accurate, or legal admissibility.
+              No external immutable storage or trusted timestamping is used.
+            </p>
+
             <div className="mt-3 flex flex-wrap gap-2">
               <Button
                 size="sm"
@@ -228,6 +268,16 @@ export function EvidenceDrawer({
                 )}
                 {item.hash ? "Re-generate hash" : "Generate SHA-256 hash"}
               </Button>
+              {(item.hashStatus === "mismatch" || item.tampered) && (
+                <Button
+                  size="sm"
+                  onClick={() => setRebaselineOpen((o) => !o)}
+                  disabled={busy !== null}
+                  className="h-7 cursor-pointer gap-1.5 border border-jamber/50 bg-jamber/10 px-2.5 font-mono text-[10px] uppercase tracking-wider text-jamber hover:bg-jamber/20 hover:text-jamber"
+                >
+                  <History className="size-3" /> Re-baseline hash…
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={handleVerify}
@@ -243,6 +293,49 @@ export function EvidenceDrawer({
                 Verify integrity
               </Button>
             </div>
+
+            {/* Explicit re-baseline flow for mismatched items — always needs a
+                recorded reason; the original hash stays in history. */}
+            {rebaselineOpen && (
+              <div className="mt-3 border border-jamber/40 bg-jamber/5 p-2.5">
+                <p className="jaal-label">Re-baseline hash · recorded reason</p>
+                <p className="mt-1 text-[10px] leading-relaxed text-jmuted">
+                  Replaces the recorded baseline with a hash of the CURRENT
+                  content. The original hash and all prior results stay in
+                  history; the item is never auto-marked verified.
+                </p>
+                <Textarea
+                  value={rebaselineReason}
+                  onChange={(e) => setRebaselineReason(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Corrected snapshot after analyst edit (demo)"
+                  className="mt-2 border-jborder/70 bg-background font-mono text-[11px] text-jtext focus-visible:border-jamber/70 focus-visible:ring-jamber/40"
+                />
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleRebaseline}
+                    disabled={busy !== null}
+                    className="h-7 cursor-pointer gap-1.5 bg-jamber px-2.5 font-mono text-[10px] uppercase tracking-wider text-background hover:bg-jamber/85"
+                  >
+                    {busy === "rebaseline" ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <History className="size-3" />
+                    )}
+                    Record re-baseline
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setRebaselineOpen(false)}
+                    className="h-7 cursor-pointer font-mono text-[10px] uppercase tracking-wider text-jmuted"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <AnimatePresence>
               {result && (

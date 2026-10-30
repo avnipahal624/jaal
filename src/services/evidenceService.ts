@@ -15,10 +15,23 @@ import { sha256Hex } from "@/utils/hash";
  * support@paypal.com is never mislabeled as a UPI handle.
  */
 const EMAIL_RE = /\b[a-z0-9][a-z0-9._-]*@[a-z0-9][a-z0-9.-]*\.[a-z]{2,}\b/i;
+const EMAIL_RE_G = new RegExp(EMAIL_RE.source, "gi");
 const UPI_RE = /\b[a-z0-9][a-z0-9._-]{2,}@[a-z][a-z0-9]{2,}\b/i;
-const PHONE_RE = /(?:\+91[\s-]?)?\b[6-9]\d{4}[\s-]?\d{5}\b/;
-const URL_RE = /\bhttps?:\/\/[^\s,;"')\]]+/i;
+const UPI_RE_G = new RegExp(UPI_RE.source, "gi");
+// Indian mobile: optional +91/0 prefix, must start 6-9, exactly 10 significant
+// digits, never embedded inside a longer digit run (lookarounds).
+const PHONE_RE = /(?<!\d)(?:(?:\+91|0)[\s-]?)?[6-9]\d{4}[\s-]?\d{5}(?!\d)/;
+const PHONE_RE_G = new RegExp(PHONE_RE.source, "g");
+// Obfuscation-aware URL detection: hxxp://, http[: ]//, www. prefixes, plus
+// bracketed/dotted domains like `portal[dot]example[dot]com`.
+const URL_RE =
+  /\b(?:(?:https?|hxxps?|ftps?):(?:\/\/|\[:\]\/\/)|www\.)[^\s,;"')\]]+/i;
+const URL_RE_G = new RegExp(URL_RE.source, "gi");
+const DOT_DOMAIN_RE =
+  /\b[a-z0-9][a-z0-9-]{1,}(?:\s*(?:\[|\()\s*dot\s*(?:\]|\))\s*)[a-z0-9.]+/i;
+const DOT_DOMAIN_RE_G = new RegExp(DOT_DOMAIN_RE.source, "gi");
 const MONEY_RE = /(?:₹|rs\.?\s?|inr\s?)\s?\d[\d,]*(?:\s?\d+)?/i;
+const MONEY_RE_G = new RegExp(MONEY_RE.source, "gi");
 const REF_RE = /\b[A-Z]{2,}\/[A-Z]{2,}\/\d{4}\/[A-Z]{2,}\/\d{2,}\b/;
 
 export interface EvidenceDraft {
@@ -26,6 +39,31 @@ export interface EvidenceDraft {
   label: string;
   value: string;
   content: string;
+  /** Heuristic extraction confidence in [0,1] — a review aid, never a fraud verdict. */
+  confidence: number;
+  /** Which rule produced this, e.g. RULE_BASED_REGEX:url_obfuscated. */
+  method: string;
+}
+
+/** A TLD-looking tail after the last dot (basic URL validation). */
+function looksLikeUrl(value: string): boolean {
+  const cleaned = value.replace(/[.,;:!?\])]+$/, "");
+  const host = cleaned
+    .replace(/^(?:https?|hxxps?|ftps?):(?:\/\/|\[:\]\/\/)/i, "")
+    .replace(/^www\./i, "")
+    .split(/[/?#]/)[0] ?? "";
+  if (!host.includes(".")) return false;
+  const tld = host.split(".").pop() ?? "";
+  return /^[a-z]{2,}$/i.test(tld);
+}
+
+/** All regex matches (not just the first) for one pattern. */
+function matches(text: string, re: RegExp): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(re)) {
+    if (m[0]) out.push(m[0]);
+  }
+  return out;
 }
 
 function labelFor(type: EvidenceType): string {
@@ -53,42 +91,91 @@ function draft(
   type: EvidenceType,
   value: string,
   sourceText: string,
+  confidence: number,
+  method: string,
 ): EvidenceDraft {
   return {
     type,
     label: labelFor(type),
     value,
     content: `${labelFor(type)}: ${value}\nSource message: ${sourceText}`,
+    confidence,
+    method,
   };
 }
 
-/** Extract suspicious identifiers from a single message. */
+/**
+ * Extract suspicious identifiers from a single message.
+ *
+ * Rule-based only (no model calls). Multiple indicators of any type are found
+ * per message, every value is validated before it is kept, the ORIGINAL
+ * matched text is preserved verbatim, and each draft carries its detection
+ * method plus a heuristic confidence so the UI can distinguish a strong
+ * pattern from a weak one. Detection assistance only — never a confirmed
+ * fraud determination.
+ */
 export function extractIdentifiers(message: ConversationMessage): EvidenceDraft[] {
   if (message.author !== "scammer") return [];
   const text = message.text;
   const found: EvidenceDraft[] = [];
   const seen = new Set<string>();
 
-  const push = (type: EvidenceType, value: string | null | undefined) => {
+  const push = (
+    type: EvidenceType,
+    value: string | null | undefined,
+    confidence: number,
+    method: string,
+  ) => {
     if (!value) return;
     const clean = value.trim().replace(/[.,;]$/, "");
+    if (!clean) return;
     const key = `${type}:${clean.toLowerCase()}`;
     if (seen.has(key)) return;
     seen.add(key);
-    found.push(draft(type, clean, text));
+    found.push(draft(type, clean, text, confidence, method));
   };
 
-  // Email first: a dot-TLD domain wins over the VPA-shaped pattern, and the
-  // matched span is removed from the scan text so an address is never
-  // double-labeled as a (truncated) UPI handle.
-  const emailMatch = text.match(EMAIL_RE);
-  if (emailMatch) push("email", emailMatch[0]);
-  const upiScanText = emailMatch ? text.replace(EMAIL_RE, " ") : text;
-  push("upi", upiScanText.match(UPI_RE)?.[0]);
-  push("phone", text.match(PHONE_RE)?.[0]);
-  push("url", text.match(URL_RE)?.[0]);
-  push("payment_request", text.match(MONEY_RE)?.[0]);
-  push("other", text.match(REF_RE)?.[0]);
+  // E-mails first: matched spans are blanked so an address is never
+  // double-labeled as a (truncated) UPI handle or a phone number.
+  let scan = text;
+  for (const email of matches(scan, EMAIL_RE_G)) {
+    push("email", email, 0.95, "RULE_BASED_REGEX:email");
+    scan = scan.replace(email, " ".repeat(email.length));
+  }
+
+  for (const upi of matches(scan, UPI_RE_G)) {
+    // A handle whose suffix contains a dot-TLD is an e-mail, not a VPA.
+    const suffix = upi.split("@")[1] ?? "";
+    if (suffix.includes(".")) continue;
+    push("upi", upi, 0.9, "RULE_BASED_REGEX:upi_vpa");
+  }
+
+  // URLs (incl. obfuscated forms) are blanked before the phone pass so a
+  // digit run inside a link is never reported as a phone number.
+  const urlSpans = [
+    ...matches(scan, URL_RE_G),
+    ...matches(scan, DOT_DOMAIN_RE_G),
+  ];
+  for (const url of urlSpans) {
+    if (!looksLikeUrl(url)) continue;
+    const obfuscated = /^(?:hxxps?|ftp)/i.test(url) || /\[(?:dot|\.)/i.test(url);
+    push("url", url, obfuscated ? 0.75 : 0.92, "RULE_BASED_REGEX:url_obfuscated");
+    scan = scan.replace(url, " ".repeat(url.length));
+  }
+
+  for (const phone of matches(scan, PHONE_RE_G)) {
+    const digits = phone.replace(/\D/g, "");
+    if (digits.length !== 10 && digits.length !== 12) continue;
+    if (!/^[6-9]/.test(digits.slice(-10))) continue;
+    push("phone", phone, 0.85, "RULE_BASED_REGEX:phone_in");
+  }
+
+  for (const money of matches(text, MONEY_RE_G)) {
+    if (!/\d/.test(money)) continue;
+    push("payment_request", money, 0.85, "RULE_BASED_REGEX:amount");
+  }
+
+  push("other", text.match(REF_RE)?.[0], 0.8, "RULE_BASED_REGEX:case_ref");
 
   return found;
 }
@@ -132,6 +219,8 @@ export function toEvidenceItem(
       d.type === "transcript"
         ? "Full local transcript captured from the controlled simulation."
         : "Synthetic demo identifier — extracted from simulation content only.",
+    detectionMethod: d.method,
+    confidence: d.confidence,
     hash: null,
     hashGeneratedAt: null,
     hashStatus: "none",

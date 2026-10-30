@@ -7,23 +7,39 @@
  * HASH_GENERATED / KILLCHAIN_UPDATED / STRATEGY_GENERATED updates as soon as
  * a mutation commits — this replaces an SSE stream with Convex subscriptions.
  *
- * All case resources are scoped to the authenticated owner (identity subject,
- * or the shared "demo" owner for simulation logins); every mutation re-checks
- * ownership server-side and never trusts a client-claimed caseId alone.
+ * All case resources are scoped to the authenticated owner (Convex Auth
+ * identity subject — including the per-guest Anonymous provider identities
+ * used by the simulation login). There is NO shared fallback owner: signed-out
+ * callers are rejected. Every mutation re-checks ownership server-side and
+ * never trusts a client-claimed caseId alone.
  */
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  AI_RATE_MAX,
+  AI_RATE_WINDOW_MS,
+  assertLength,
   buildRuntime,
   capTable,
   docToEvidence,
   docToInvestigation,
   docToMessage,
+  evidenceManifest,
+  evidenceManifestCore,
   getOwner,
   loadSettings,
+  manifestCoreBytes,
+  maskSensitiveText,
+  MAX_EVIDENCE_PER_CASE,
   MAX_EVENT_DOCS,
+  MAX_IMPORT_MESSAGES,
+  MAX_MESSAGES_PER_CASE,
   MAX_LOG_DOCS,
+  MAX_MESSAGE_LENGTH,
+  MAX_NOTES_LENGTH,
+  MAX_TITLE_LENGTH,
+  MAX_TRANSCRIPT_CHARS,
   processMessage,
   pushEvent,
   pushLog,
@@ -40,8 +56,18 @@ import { buildReport } from "@/services/reportService";
 import { buildSeedCases } from "@/data/demoInvestigations";
 import { OPENING_TURN } from "@/data/demoConversation";
 import { sha256Hex } from "@/utils/hash";
-import type { CaseRuntime, KillChainStage } from "@/types/investigation";
+import { parseTranscript, summarizeImport } from "@/services/transcriptParser";
+import type { CaseRuntime, Investigation, KillChainStage } from "@/types/investigation";
+import type { Settings } from "@/types/settings";
 import type { EvidenceReport } from "@/types/report";
+
+/** Wire shape of the `state` subscription (null when signed out). */
+type RemoteState = {
+  investigations: Investigation[];
+  sessions: Record<string, CaseRuntime>;
+  reports: EvidenceReport[];
+  settings: Settings;
+};
 
 // ---------------------------------------------------------------------------
 // Shared lookups
@@ -101,6 +127,41 @@ async function countMessages(
   return docs.length;
 }
 
+/**
+ * AI request budget — enforces the rolling per-owner window before any
+ * provider call is made. Called by the AI actions (which verify ownership
+ * through `requireInvestigation` here). Over-limit callers get a clear error
+ * and the deterministic rule engine keeps serving the UI.
+ */
+export const recordAiRequest = mutation({
+  args: { caseId: v.string(), kind: v.string() },
+  handler: async (ctx, { caseId, kind }) => {
+    const inv = await requireInvestigation(ctx, caseId);
+    const owner = inv.owner;
+    const now = Date.now();
+    const cutoff = now - AI_RATE_WINDOW_MS;
+    const recent = await ctx.db
+      .query("ai_requests")
+      .withIndex("by_owner_at", (q) => q.eq("owner", owner).gte("at", cutoff))
+      .collect();
+    if (recent.length >= AI_RATE_MAX) {
+      throw new Error(
+        `AI rate limit exceeded — at most ${AI_RATE_MAX} requests per ${
+          AI_RATE_WINDOW_MS / 1000
+        }s. Wait a moment; the rule engine keeps working in the meantime.`,
+      );
+    }
+    await ctx.db.insert("ai_requests", { owner, caseId, kind, at: now });
+    // Opportunistic sweep so the table stays bounded.
+    const stale = await ctx.db
+      .query("ai_requests")
+      .withIndex("by_owner_at", (q) => q.eq("owner", owner).lt("at", now - 3_600_000))
+      .take(50);
+    for (const row of stale) await ctx.db.delete(row._id);
+    return { allowed: true, remaining: AI_RATE_MAX - recent.length - 1 };
+  },
+});
+
 function nextCaseId(existing: Doc<"investigations">[]): string {
   const max = existing.reduce((acc, inv) => {
     const n = Number(inv.caseId.split("-")[1]);
@@ -120,8 +181,16 @@ function nextCaseId(existing: Doc<"investigations">[]): string {
  */
 export const state = query({
   args: {},
-  handler: async (ctx) => {
-    const owner = await requireOwner(ctx);
+  handler: async (ctx): Promise<RemoteState | null> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.subject) {
+      // Signed-out callers receive NO data. (Returning null rather than
+      // throwing keeps public routes — landing/auth/login — from crashing on
+      // this reactive subscription; every mutation and case-scoped query
+      // throws an authorization error instead.)
+      return null;
+    }
+    const owner = identity.subject;
     const invDocs = await ctx.db
       .query("investigations")
       .withIndex("by_owner", (q) => q.eq("owner", owner))
@@ -203,7 +272,10 @@ export const dashboard = query({
           caseId: e.caseId,
           kind: e.kind,
           title: e.title,
-          detail: e.detail,
+          // Dashboard previews are a place where full identifiers are
+          // unnecessary — phone numbers, UPI handles, e-mails and URLs are
+          // masked here (full values remain in the owner-scoped case data).
+          detail: maskSensitiveText(e.detail),
           timestamp: e.timestamp,
         });
       }
@@ -368,6 +440,16 @@ export const createInvestigation = mutation({
   },
   handler: async (ctx, args) => {
     const owner = await requireOwner(ctx);
+    // Server-side validation — never trust client-side checks alone.
+    assertLength(args.title, MAX_TITLE_LENGTH, "Case title");
+    assertLength(args.category, MAX_TITLE_LENGTH, "Case category");
+    assertLength(args.description, MAX_NOTES_LENGTH, "Case description");
+    assertLength(args.notes ?? "", MAX_NOTES_LENGTH, "Case notes");
+    if (args.transcript && args.transcript.length > MAX_TRANSCRIPT_CHARS) {
+      throw new Error(
+        `Transcript exceeds the maximum size of ${MAX_TRANSCRIPT_CHARS} characters.`,
+      );
+    }
     const existing = await ctx.db
       .query("investigations")
       .withIndex("by_owner", (q) => q.eq("owner", owner))
@@ -417,29 +499,45 @@ export const createInvestigation = mutation({
       now,
     );
 
-    // Imported / pasted transcripts are indexed as messages + evidence.
+    // Imported / pasted transcripts are indexed as messages + evidence with a
+    // robust parser: every line is preserved (parsed, appended as a multiline
+    // continuation, or flagged for manual review) and full import statistics
+    // are recorded and returned — an import is never reported as fully
+    // successful when lines were skipped.
+    let importStats: Awaited<ReturnType<typeof parseTranscript>>["stats"] | null =
+      null;
     if (args.transcript?.trim()) {
-      const lines = args.transcript.split(/\r?\n/).filter((l) => l.trim());
+      const parsed = parseTranscript(args.transcript);
+      const kept = parsed.messages.slice(0, MAX_IMPORT_MESSAGES);
+      if (kept.length < parsed.messages.length) {
+        parsed.stats.warnings.push(
+          `Import limit reached — ${parsed.messages.length - kept.length} message(s) beyond ${MAX_IMPORT_MESSAGES} were not imported.`,
+        );
+      }
+      importStats = { ...parsed.stats, messagesImported: kept.length };
+
       let stamp = 0;
       let number = 0;
-      for (const line of lines) {
-        const m = line.match(
-          /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?([A-Za-z][A-Za-z ]{1,20}):\s*(.+)$/,
-        );
-        if (!m) continue;
-        const who = m[1]!.toLowerCase().trim();
-        const isDecoy = /^(me|you|decoy|self|operator|user|jaal)$/.test(who);
+      for (const m of kept) {
         number += 1;
         const msgId = await ctx.db.insert("messages", {
           investigationId: inv._id,
           owner,
           caseId,
           messageNumber: number,
-          sender: isDecoy ? "decoy" : "scammer",
-          content: m[2]!,
-          source: args.source === "paste" ? "OPERATOR" : "TRANSCRIPT-IMPORT",
-          timestamp: now + stamp * 1500,
-          status: isDecoy ? "DECOY-ACTIVE" : undefined,
+          sender: m.sender,
+          content: assertLength(m.text, MAX_MESSAGE_LENGTH, "Imported message"),
+          source: m.needsReview
+            ? "IMPORT-REVIEW"
+            : args.source === "paste"
+              ? "OPERATOR"
+              : "TRANSCRIPT-IMPORT",
+          timestamp: m.timestamp ?? now + stamp * 1500,
+          status: m.needsReview
+            ? "NEEDS-REVIEW"
+            : m.sender === "decoy"
+              ? "DECOY-ACTIVE"
+              : undefined,
         });
         const doc = (await ctx.db.get(msgId))!;
         await processMessage(ctx.db, inv, doc, {
@@ -451,15 +549,26 @@ export const createInvestigation = mutation({
       await pushLog(
         ctx.db,
         inv,
-        "info",
-        `Transcript indexed · ${number} messages`,
+        importStats.unparsedLines > 0 ? "warn" : "info",
+        `Transcript import · ${summarizeImport(importStats)}`,
+      );
+      for (const w of importStats.warnings) {
+        await pushLog(ctx.db, inv, "warn", `Import warning · ${w}`);
+      }
+      await pushEvent(
+        ctx.db,
+        inv,
+        "message",
+        "Transcript imported",
+        `${importStats.messagesImported} message(s) · ${importStats.unparsedLines} line(s) need review`,
+        now,
       );
     } else if (args.source === "simulation") {
       await seedOpening(ctx.db, inv);
     }
 
     await refreshStrategy(ctx.db, (await ctx.db.get(invId))!);
-    return caseId;
+    return { caseId, import: importStats };
   },
 });
 
@@ -530,17 +639,17 @@ async function generateReportDoc(
   const runtime = await buildRuntime(db, inv);
   const investigation = docToInvestigation(inv);
   const now = opts.generatedAt ?? Date.now();
-  const built = buildReport(investigation, runtime, generatedBy, now);
-  const report: EvidenceReport = {
-    ...built,
-    id: opts.reportId ?? built.id,
-  };
-
   const existing = await db
     .query("reports")
     .withIndex("by_investigation", (q) => q.eq("investigationId", inv._id))
     .collect();
   const version = existing.length + 1;
+  const built = buildReport(investigation, runtime, generatedBy, now);
+  const report: EvidenceReport = {
+    ...built,
+    id: opts.reportId ?? built.id,
+    reportVersion: version,
+  };
 
   await db.insert("reports", {
     investigationId: inv._id,
@@ -627,7 +736,13 @@ async function ingestMessageDoc(
     timestamp?: number;
   },
 ): Promise<Doc<"messages">> {
+  assertLength(args.content, MAX_MESSAGE_LENGTH, "Message content");
   const count = await countMessages(ctx.db, inv);
+  if (count >= MAX_MESSAGES_PER_CASE) {
+    throw new Error(
+      `Message limit reached for this case (${MAX_MESSAGES_PER_CASE}).`,
+    );
+  }
   const id = await ctx.db.insert("messages", {
     investigationId: inv._id,
     owner: inv.owner,
@@ -807,6 +922,7 @@ export const sendMessage = mutation({
   handler: async (ctx, { caseId, text }) => {
     const trimmed = text.trim();
     if (!trimmed) return { reply: null, completed: false, exhausted: true };
+    assertLength(trimmed, MAX_MESSAGE_LENGTH, "Message");
     const inv = await requireInvestigation(ctx, caseId);
     return sendDecoyAndReply(ctx, inv, trimmed);
   },
@@ -885,6 +1001,11 @@ export const ingestMessages = mutation({
   },
   handler: async (ctx, { caseId, messages }) => {
     const inv = await requireInvestigation(ctx, caseId);
+    if (messages.length > MAX_IMPORT_MESSAGES) {
+      throw new Error(
+        `Import batch exceeds ${MAX_IMPORT_MESSAGES} messages — split the transcript.`,
+      );
+    }
     let count = 0;
     for (const m of messages) {
       if (!m.content.trim()) continue;
@@ -1024,6 +1145,38 @@ export const clearLogs = mutation({
 // Evidence integrity (SHA-256 via Web Crypto)
 // ---------------------------------------------------------------------------
 
+/**
+ * Persist the deterministic manifest document + its SHA-256 for an evidence
+ * row. Called only when a hash BASELINE changes (first generation or explicit
+ * re-baseline) — never from verification of a tampered item, so manifest
+ * drift stays detectable.
+ */
+async function storeManifest(
+  db: MutationCtx["db"],
+  evidenceId: Id<"evidence">,
+  owner: string,
+): Promise<void> {
+  const fresh = await db.get(evidenceId);
+  if (!fresh) return;
+  const manifest = evidenceManifest(fresh, owner);
+  const manifestHash = await sha256Hex(
+    manifestCoreBytes(evidenceManifestCore(fresh, owner)),
+  );
+  await db.patch(evidenceId, { manifest, manifestHash });
+}
+
+/**
+ * Generate the first SHA-256 baseline for an item.
+ *
+ * Lifecycle rules:
+ *  - First generation → HASH_GENERATED. Generating a hash is NOT verifying it.
+ *  - Re-running on content that already matches the recorded hash is a no-op
+ *    (bookkeeping refresh only) and never downgrades/upgrade the status.
+ *  - Re-running on content that DIFFERS from the recorded hash is refused:
+ *    re-baselining is the explicit `rebaselineEvidence` operation and always
+ *    requires a recorded reason. Nothing here can silently mark altered
+ *    content authentic.
+ */
 export const generateHash = mutation({
   args: { evidenceId: v.id("evidence") },
   handler: async (ctx, { evidenceId }) => {
@@ -1031,15 +1184,43 @@ export const generateHash = mutation({
     if (!doc) throw new Error("Evidence not found");
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
-    const hash = await sha256Hex(doc.content);
     const at = Date.now();
+
+    if (doc.integrityHash) {
+      const recomputed = await sha256Hex(doc.content);
+      if (recomputed.toLowerCase() !== doc.integrityHash.toLowerCase()) {
+        throw new Error(
+          "Content differs from the recorded hash (integrity mismatch). " +
+            "Re-baseline the hash explicitly with a recorded reason — the " +
+            "original hash stays in history and the item is never auto-verified.",
+        );
+      }
+      const hashHistory = [
+        ...(doc.hashHistory ?? []),
+        {
+          at,
+          by: owner,
+          action: "regenerated",
+          hash: doc.integrityHash,
+          detail: "Regenerated for content that matches the recorded hash.",
+        },
+      ].slice(-20);
+      await ctx.db.patch(evidenceId, { hashHistory });
+      await storeManifest(ctx.db, evidenceId, owner);
+      return { hash: doc.integrityHash, at, status: doc.integrityStatus };
+    }
+
+    const hash = await sha256Hex(doc.content);
     await ctx.db.patch(evidenceId, {
       integrityHash: hash,
       integrityAlgorithm: "SHA-256",
       integrityStatus: "HASH_GENERATED",
       hashGeneratedAt: at,
-      tampered: false,
+      hashHistory: [{ at, by: owner, action: "generated", hash }],
+      // `tampered` and `originalContent` are intentionally preserved — a
+      // simulation marker must never be cleared by hashing.
     });
+    await storeManifest(ctx.db, evidenceId, owner);
     const inv = await ctx.db.get(doc.investigationId);
     if (inv) {
       await pushEvent(
@@ -1047,52 +1228,182 @@ export const generateHash = mutation({
         inv,
         "hash_generated",
         "Evidence hash generated",
-        `${doc.label}: ${doc.extractedValue}`,
+        `${doc.label}: SHA-256 recorded — independent verification not yet run`,
         at,
       );
-      await pushLog(ctx.db, inv, "success", `SHA-256 hash generated · ${doc.label}`, at);
+      await pushLog(
+        ctx.db,
+        inv,
+        "success",
+        `SHA-256 hash generated · ${doc.label} — verification not yet performed`,
+        at,
+      );
     }
-    return { hash, at };
+    return { hash, at, status: "HASH_GENERATED" as const };
   },
 });
 
+/**
+ * Explicit, authenticated re-baseline of a mismatched evidence hash.
+ * Requires a recorded reason; preserves the original hash and all prior
+ * verification results; NEVER marks the item verified.
+ */
+export const rebaselineEvidence = mutation({
+  args: { evidenceId: v.id("evidence"), reason: v.string() },
+  handler: async (ctx, { evidenceId, reason }) => {
+    const doc = await ctx.db.get(evidenceId);
+    if (!doc) throw new Error("Evidence not found");
+    const owner = await requireOwner(ctx);
+    if (doc.owner !== owner) throw new Error("Not authorized");
+    const why = reason.trim();
+    if (why.length < 3) {
+      throw new Error(
+        "A recorded reason is required to re-baseline an evidence hash.",
+      );
+    }
+    assertLength(why, 500, "Re-baseline reason");
+    if (!doc.integrityHash) {
+      throw new Error("No recorded hash — use generate hash instead.");
+    }
+    const recomputed = await sha256Hex(doc.content);
+    if (recomputed.toLowerCase() === doc.integrityHash.toLowerCase()) {
+      throw new Error(
+        "Content already matches the recorded hash — no re-baseline needed.",
+      );
+    }
+    const at = Date.now();
+    const hashHistory = [
+      ...(doc.hashHistory ?? []),
+      { at, by: owner, action: "superseded", hash: doc.integrityHash, detail: why },
+      { at, by: owner, action: "rebaselined", hash: recomputed, detail: why },
+    ].slice(-20);
+    await ctx.db.patch(evidenceId, {
+      integrityHash: recomputed,
+      integrityAlgorithm: "SHA-256",
+      integrityStatus: "HASH_GENERATED",
+      hashGeneratedAt: at,
+      hashHistory,
+      // tampered flag, originalContent and verificationHistory all preserved.
+    });
+    await storeManifest(ctx.db, evidenceId, owner);
+    const inv = await ctx.db.get(doc.investigationId);
+    if (inv) {
+      await pushEvent(
+        ctx.db,
+        inv,
+        "hash_generated",
+        "Evidence hash re-baselined",
+        `${doc.label}: new SHA-256 recorded — reason: ${why}`,
+        at,
+      );
+      await pushLog(
+        ctx.db,
+        inv,
+        "warn",
+        `Hash re-baselined · ${doc.label} — reason: ${why}. Item is NOT verified until verification is re-run.`,
+        at,
+      );
+    }
+    return { hash: recomputed, at, status: "HASH_GENERATED" as const };
+  },
+});
+
+/**
+ * Independent verification: recompute SHA-256 of the CURRENT snapshot and
+ * compare against the previously recorded baseline (and, when a manifest
+ * baseline exists, the canonical manifest fields).
+ *
+ * Returns:
+ *  - "generated" — no baseline existed; one was created. This is NOT a
+ *    verification result and is reported as such to the caller.
+ *  - "match" / "mismatch" — comparison against the recorded baseline.
+ *  - "error" — item not found.
+ *
+ * Every result is appended to the item's verification history; a mismatch is
+ * always surfaced and never overwritten by a later pass.
+ */
 export const verifyEvidence = mutation({
   args: { evidenceId: v.id("evidence") },
-  handler: async (ctx, { evidenceId }): Promise<"match" | "mismatch" | "error"> => {
+  handler: async (
+    ctx,
+    { evidenceId },
+  ): Promise<"match" | "mismatch" | "generated" | "error"> => {
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return "error";
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
     const inv = await ctx.db.get(doc.investigationId);
+    const at = Date.now();
+
     if (!doc.integrityHash) {
-      // No recorded hash — generate one, report the generated state.
+      // No baseline exists — create one, but return the honest state instead
+      // of an opaque error: a hash was generated, independent verification
+      // has NOT yet occurred.
       const hash = await sha256Hex(doc.content);
-      const at = Date.now();
       await ctx.db.patch(evidenceId, {
         integrityHash: hash,
         integrityAlgorithm: "SHA-256",
         integrityStatus: "HASH_GENERATED",
         hashGeneratedAt: at,
+        hashHistory: [
+          ...(doc.hashHistory ?? []),
+          { at, by: owner, action: "generated", hash },
+        ].slice(-20),
       });
+      await storeManifest(ctx.db, evidenceId, owner);
       if (inv) {
         await pushEvent(
           ctx.db,
           inv,
           "hash_generated",
           "Evidence hash generated",
-          `${doc.label}: ${doc.extractedValue}`,
+          `${doc.label}: SHA-256 recorded — independent verification has not yet occurred`,
           at,
         );
-        await pushLog(ctx.db, inv, "success", `SHA-256 hash generated · ${doc.label}`, at);
+        await pushLog(
+          ctx.db,
+          inv,
+          "info",
+          `Hash generated · ${doc.label} — run verification to compare content against it`,
+          at,
+        );
       }
-      return "error";
+      return "generated";
     }
+
     const recomputed = await sha256Hex(doc.content);
-    const match = recomputed.toLowerCase() === doc.integrityHash.toLowerCase();
-    const at = Date.now();
+    const contentMatch =
+      recomputed.toLowerCase() === doc.integrityHash.toLowerCase();
+    let manifestMatch = true;
+    let detail: string | undefined;
+    if (doc.manifestHash) {
+      const coreHash = await sha256Hex(
+        manifestCoreBytes(evidenceManifestCore(doc, owner)),
+      );
+      manifestMatch = coreHash.toLowerCase() === doc.manifestHash.toLowerCase();
+      if (!manifestMatch) {
+        detail = "manifest fields changed since the recorded baseline";
+      }
+    }
+    const match = contentMatch && manifestMatch;
+    const verificationHistory = [
+      ...(doc.verificationHistory ?? []),
+      {
+        at,
+        by: owner,
+        action: "verification",
+        status: match ? "INTEGRITY_VERIFIED" : "HASH_MISMATCH",
+        hash: recomputed,
+        detail: detail ?? (contentMatch ? undefined : "content hash differs from baseline"),
+      },
+    ].slice(-20);
     await ctx.db.patch(evidenceId, {
       integrityStatus: match ? "INTEGRITY_VERIFIED" : "HASH_MISMATCH",
+      verificationHistory,
     });
+    // Only a successful verification refreshes the manifest (a failed one
+    // must keep manifest drift detectable).
+    if (match) await storeManifest(ctx.db, evidenceId, owner);
     if (inv) {
       if (match) {
         await pushEvent(
@@ -1100,7 +1411,9 @@ export const verifyEvidence = mutation({
           inv,
           "integrity_verified",
           "Integrity verified",
-          `${doc.label}: content matches recorded hash`,
+          `${doc.label}: content matches recorded hash${
+            doc.tampered ? " (post-simulation baseline — tamper history preserved)" : ""
+          }`,
           at,
         );
         await pushLog(ctx.db, inv, "success", `Integrity verified · ${doc.label}`, at);
@@ -1126,21 +1439,61 @@ export const verifyEvidence = mutation({
   },
 });
 
+/**
+ * TAMPER SIMULATION ONLY — the explicit, owner-restricted demonstration path.
+ *
+ * Never touches the recorded hash or any verification history. The original
+ * snapshot is preserved on first use, every mutation is appended to the
+ * content history, and a tamper-simulation activity event is recorded so the
+ * change is visible in the case log. Status moves to TAMPER_SIMULATION (never
+ * silently back to verified); re-verification against the preserved baseline
+ * is what produces HASH_MISMATCH.
+ */
 export const setEvidenceContent = mutation({
-  args: { evidenceId: v.id("evidence"), content: v.string() },
-  handler: async (ctx, { evidenceId, content }) => {
+  args: {
+    evidenceId: v.id("evidence"),
+    content: v.string(),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, { evidenceId, content, reason }) => {
     const doc = await ctx.db.get(evidenceId);
     if (!doc) return;
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
-    await ctx.db.patch(evidenceId, { content, tampered: true });
+    assertLength(content, MAX_MESSAGE_LENGTH * 2, "Evidence content");
+    const at = Date.now();
+    const why =
+      reason?.trim() || "Operator tamper demonstration (integrity demo)";
+    const contentHistory = [
+      ...(doc.contentHistory ?? []),
+      { at, by: owner, action: "tamper_simulation", detail: why },
+    ].slice(-20);
+    await ctx.db.patch(evidenceId, {
+      content,
+      tampered: true,
+      integrityStatus: "TAMPER_SIMULATION",
+      // First alteration keeps the pristine snapshot for the record.
+      originalContent: doc.originalContent ?? doc.content,
+      contentHistory,
+      // integrityHash, hashGeneratedAt and verificationHistory untouched.
+      // manifestHash deliberately NOT refreshed — drift stays detectable.
+    });
     const inv = await ctx.db.get(doc.investigationId);
     if (inv) {
+      await pushEvent(
+        ctx.db,
+        inv,
+        "integrity_mismatch",
+        "Tamper simulation applied",
+        `${doc.label}: content modified in tamper simulation — reason: ${why}`,
+        at,
+      );
       await pushLog(
         ctx.db,
         inv,
         "warn",
-        "Evidence content modified by operator (integrity demo)",
+        `Evidence content modified by operator (tamper simulation) · ${doc.label} — original snapshot and recorded hash preserved`,
+        at,
       );
     }
   },
@@ -1244,10 +1597,23 @@ export const applyReportSummary = mutation({
     const doc = docs.find((d) => d.reportId === reportId);
     if (!doc) return;
     const data = doc.reportData as EvidenceReport;
+    const aiSummary =
+      engineMode === "ANTHROPIC"
+        ? "Executive summary narrative — Anthropic Claude."
+        : `Executive summary narrative — ${engineMode}.`;
+    const provenance = data.provenance
+      ? {
+          ...data.provenance,
+          aiAssisted: data.provenance.aiAssisted.filter(
+            (x) => !x.startsWith("None —"),
+          ).concat(aiSummary),
+        }
+      : undefined;
     await ctx.db.patch(doc._id, {
       summary,
       reportData: {
         ...data,
+        provenance,
         summary: {
           ...data.summary,
           // The executive narrative slot carries the model-written summary;
@@ -1278,6 +1644,9 @@ export const updateSettings = mutation({
   },
   handler: async (ctx, args) => {
     const owner = await requireOwner(ctx);
+    if (JSON.stringify(args).length > 64_000) {
+      throw new Error("Settings payload exceeds 64KB.");
+    }
     const existing = await ctx.db
       .query("settings")
       .withIndex("by_owner", (q) => q.eq("owner", owner))

@@ -33,7 +33,20 @@ const integrityStatusValidator = v.union(
   v.literal("HASH_GENERATED"),
   v.literal("INTEGRITY_VERIFIED"),
   v.literal("HASH_MISMATCH"),
+  // Explicit tamper-demonstration state: content was altered by the
+  // authenticated operator through the simulation path. Never presented as
+  // verified — verification must be re-run against the recorded hash.
+  v.literal("TAMPER_SIMULATION"),
 );
+
+const historyEntryValidator = v.object({
+  at: v.number(),
+  by: v.string(),
+  action: v.string(),
+  detail: v.optional(v.string()),
+  hash: v.optional(v.string()),
+  status: v.optional(v.string()),
+});
 
 const schema = defineSchema(
   {
@@ -148,12 +161,26 @@ const schema = defineSchema(
       content: v.string(),
       extractionMethod: v.string(),
       extractionTimestamp: v.number(),
+      /** Heuristic rule-based extraction confidence in [0,1] — review aid only. */
+      confidence: v.optional(v.number()),
       integrityHash: v.optional(v.string()),
       integrityAlgorithm: v.optional(v.string()),
       integrityStatus: integrityStatusValidator,
       hashGeneratedAt: v.optional(v.number()),
       notes: v.string(),
       tampered: v.optional(v.boolean()),
+      /** First (pre-tamper) snapshot — preserved so a simulation never erases the original. */
+      originalContent: v.optional(v.string()),
+      /** Every content mutation: { at, by, action, detail }. */
+      contentHistory: v.optional(v.array(historyEntryValidator)),
+      /** Every hash generation / re-baseline: { at, by, action, hash, detail }. */
+      hashHistory: v.optional(v.array(historyEntryValidator)),
+      /** Every verification result: { at, by, status, hash, detail }. */
+      verificationHistory: v.optional(v.array(historyEntryValidator)),
+      /** Deterministic canonical manifest (see buildEvidenceManifest)… */
+      manifest: v.optional(v.any()),
+      /** …and its SHA-256. Changes whenever any manifest field changes. */
+      manifestHash: v.optional(v.string()),
       /** Analyst review verdict — stored separately from the original extraction. */
       reviewStatus: v.optional(
         v.union(
@@ -226,6 +253,17 @@ const schema = defineSchema(
     })
       .index("by_owner", ["owner"])
       .index("by_investigation", ["investigationId"]),
+
+    /**
+     * AI action usage records — rolling-window rate limiting per owner.
+     * Written only by the server; never exposed as a query surface.
+     */
+    ai_requests: defineTable({
+      owner: v.string(),
+      caseId: v.string(),
+      kind: v.string(),
+      at: v.number(),
+    }).index("by_owner_at", ["owner", "at"]),
 
     /** Per-user settings (appearance / investigation / simulation). */
     settings: defineTable({

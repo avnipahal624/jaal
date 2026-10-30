@@ -196,7 +196,14 @@ export default function ReportDetailPage() {
 
           {/* Case number */}
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-            <p className="df-caseno">CASE NO. {report.caseId}</p>
+            <p className="df-caseno">
+              CASE NO. {report.caseId}
+              {report.reportVersion ? (
+                <span className="df-mono ml-3 text-[12px] text-[color:var(--ink-soft)]">
+                  report v{report.reportVersion}
+                </span>
+              ) : null}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <Stamp
                 small={false}
@@ -403,6 +410,60 @@ export default function ReportDetailPage() {
                   </li>
                 ))}
               </ul>
+            )}
+
+            {/* Provenance — every statement class kept explicitly separate */}
+            {report.provenance && (
+              <div className="mt-6 grid gap-5 border-t border-[color:var(--navy)]/30 pt-4 sm:grid-cols-2">
+                <div>
+                  <p className="df-kicker">Original conversation evidence</p>
+                  <p className="mt-1.5 text-[13px] leading-relaxed">
+                    {report.provenance.conversation}
+                  </p>
+                  <p className="df-kicker mt-4">Rule-based findings</p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {report.provenance.ruleBased.map((x, i) => (
+                      <li key={i} className="text-[13px] leading-relaxed">
+                        · {x}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="df-kicker mt-4">AI-assisted interpretations</p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {report.provenance.aiAssisted.map((x, i) => (
+                      <li key={i} className="text-[13px] leading-relaxed">
+                        · {x}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="df-kicker">Human-reviewed findings</p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {report.provenance.humanReviewed.map((x, i) => (
+                      <li key={i} className="text-[13px] leading-relaxed">
+                        · {x}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="df-kicker mt-4">Unverified assumptions</p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {report.provenance.unverifiedAssumptions.map((x, i) => (
+                      <li key={i} className="text-[13px] leading-relaxed">
+                        · {x}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="df-kicker mt-4">Simulation-only content</p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {report.provenance.simulationOnly.map((x, i) => (
+                      <li key={i} className="text-[13px] leading-relaxed">
+                        · {x}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             )}
           </div>
         </section>
@@ -658,6 +719,10 @@ export default function ReportDetailPage() {
               Verified means the recomputed content hash matches the recorded
               baseline. A hash merely existing (“hash on file”) is not a
               verified state.
+            </p>
+            <p className="df-mono mt-1 text-[11px] text-[color:var(--ink-soft)]">
+              algorithm · {report.hashAlgorithm ?? "SHA-256"} · generated{" "}
+              {formatDateTime(report.generatedAt)}
             </p>
 
             <ul className="mt-4">

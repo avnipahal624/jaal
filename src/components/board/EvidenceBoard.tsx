@@ -80,6 +80,7 @@ const INTEGRITY_LABEL: Record<string, string> = {
   HASH_GENERATED: "hashed",
   INTEGRITY_VERIFIED: "verified",
   HASH_MISMATCH: "mismatch",
+  TAMPER_SIMULATION: "tamper sim",
 };
 
 const integrityColor = (status: string) =>

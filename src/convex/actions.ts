@@ -36,13 +36,10 @@ async function tryLLMStrategy(
   ctx: ActionCtx,
   caseId: string,
 ): Promise<void> {
-  const inv = await ctx.runQuery(api.jaal.investigationMeta, { caseId });
-  if (!inv) return;
+  // The action takes only the caseId: it verifies identity + ownership
+  // server-side, rate-limits the caller and fetches the transcript itself.
   try {
-    const res = await ctx.runAction(api.ai.strategyAction, {
-      transcript: inv.transcript.slice(-12),
-      activeStage: inv.currentStage,
-    });
+    const res = await ctx.runAction(api.ai.strategyAction, { caseId });
     if (res.suggestion) {
       await ctx.runMutation(api.jaal.applyStrategyOverride, {
         caseId,
@@ -126,28 +123,18 @@ export const generateReportWithAI = action({
       },
     );
     try {
-      const meta = await ctx.runQuery(api.jaal.investigationMeta, {
+      // Ownership-checked + rate-limited inside the action; the deterministic
+      // summary stands whenever it returns null.
+      const res = await ctx.runAction(api.ai.summaryAction, {
         caseId: args.caseId,
       });
-      if (meta) {
-        const res = await ctx.runAction(api.ai.summaryAction, {
-          title: meta.title,
-          category: meta.category,
-          transcript: meta.transcript.map((m: { author: string; text: string }) => ({
-            author: m.author,
-            text: m.text,
-          })),
-          tactics: meta.tactics,
-          stages: meta.stages,
+      if (res?.summary) {
+        await ctx.runMutation(api.jaal.applyReportSummary, {
+          caseId: args.caseId,
+          reportId: report.id,
+          summary: res.summary,
+          engineMode: res.engineMode,
         });
-        if (res?.summary) {
-          await ctx.runMutation(api.jaal.applyReportSummary, {
-            caseId: args.caseId,
-            reportId: report.id,
-            summary: res.summary,
-            engineMode: res.engineMode,
-          });
-        }
       }
     } catch {
       /* deterministic summary stands */

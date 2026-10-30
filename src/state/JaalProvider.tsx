@@ -69,8 +69,18 @@ interface JaalContextValue {
   clearLogs: (caseId: string) => void;
   setCaseStatus: (caseId: string, status: Investigation["status"]) => void;
   // evidence
-  generateHash: (caseId: string, evidenceId: string) => Promise<void>;
-  verifyEvidence: (caseId: string, evidenceId: string) => Promise<"match" | "mismatch" | "error">;
+  /** Returns true when hashing succeeded; false when the backend refused. */
+  generateHash: (caseId: string, evidenceId: string) => Promise<boolean>;
+  verifyEvidence: (
+    caseId: string,
+    evidenceId: string,
+  ) => Promise<"match" | "mismatch" | "generated" | "error">;
+  /** Explicit re-baseline of a mismatched hash — requires a recorded reason. */
+  rebaselineEvidence: (
+    caseId: string,
+    evidenceId: string,
+    reason: string,
+  ) => Promise<boolean>;
   setEvidenceContent: (caseId: string, evidenceId: string, content: string) => void;
   setEvidenceNotes: (caseId: string, evidenceId: string, notes: string) => void;
   /** Analyst review verdict — stored separately from the extraction. */
@@ -117,7 +127,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   const [typingMap, setTypingMap] = useState<Record<string, boolean>>({});
 
   // ---- Backend (Convex) wiring ------------------------------------------
-  const remote = useQuery(api.jaal.state) as RemoteState | undefined;
+  const remote = useQuery(api.jaal.state) as RemoteState | null | undefined;
   const remoteReady = remote !== undefined;
 
   const seedDemo = useMutation(api.jaal.seedDemo);
@@ -133,6 +143,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   const clearLogsMut = useMutation(api.jaal.clearLogs);
   const generateHashMut = useMutation(api.jaal.generateHash);
   const verifyEvidenceMut = useMutation(api.jaal.verifyEvidence);
+  const rebaselineMut = useMutation(api.jaal.rebaselineEvidence);
   const setContentMut = useMutation(api.jaal.setEvidenceContent);
   const setNotesMut = useMutation(api.jaal.setEvidenceNotes);
   const reviewMut = useMutation(api.jaal.reviewEvidence);
@@ -694,28 +705,33 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   );
 
   const generateHash = useCallback(
-    async (caseId: string, evidenceId: string) => {
+    async (caseId: string, evidenceId: string): Promise<boolean> => {
       if (remote) {
         try {
           await generateHashMut({ evidenceId: evidenceId as never });
-        } catch {
+          return true;
+        } catch (err) {
           dispatch({
             type: "NOTIFY",
             notification: {
               title: "Hashing unavailable",
-              detail: "Backend hashing failed for this evidence item.",
+              detail:
+                err instanceof Error
+                  ? err.message
+                  : "Backend hashing failed for this evidence item.",
               caseId,
               kind: "system",
             },
           });
+          return false;
         }
-        return;
       }
       const item = stateRef.current.sessions[caseId]?.evidence.find((e) => e.id === evidenceId);
-      if (!item) return;
+      if (!item) return false;
       try {
         const { hash, at } = await generateEvidenceHash(item);
         dispatch({ type: "HASH_SET", caseId, evidenceId, hash, at });
+        return true;
       } catch {
         dispatch({
           type: "NOTIFY",
@@ -726,13 +742,17 @@ export function JaalProvider({ children }: { children: ReactNode }) {
             kind: "system",
           },
         });
+        return false;
       }
     },
     [remote, generateHashMut],
   );
 
   const verifyEvidence = useCallback(
-    async (caseId: string, evidenceId: string): Promise<"match" | "mismatch" | "error"> => {
+    async (
+      caseId: string,
+      evidenceId: string,
+    ): Promise<"match" | "mismatch" | "generated" | "error"> => {
       if (remote) {
         try {
           return await verifyEvidenceMut({ evidenceId: evidenceId as never });
@@ -744,7 +764,8 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       if (!item) return "error";
       if (!item.hash) {
         await generateHash(caseId, evidenceId);
-        return "error";
+        // Hash was generated — this is NOT a verification result.
+        return "generated";
       }
       try {
         const result = await verifyEvidenceIntegrity(item);
@@ -764,6 +785,34 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       }
     },
     [remote, verifyEvidenceMut, generateHash],
+  );
+
+  const rebaselineEvidence = useCallback(
+    async (caseId: string, evidenceId: string, reason: string): Promise<boolean> => {
+      if (!remote) return false;
+      try {
+        await rebaselineMut({
+          evidenceId: evidenceId as never,
+          reason,
+        });
+        return true;
+      } catch (err) {
+        dispatch({
+          type: "NOTIFY",
+          notification: {
+            title: "Re-baseline refused",
+            detail:
+              err instanceof Error
+                ? err.message
+                : "The evidence hash could not be re-baselined.",
+            caseId,
+            kind: "system",
+          },
+        });
+        return false;
+      }
+    },
+    [remote, rebaselineMut],
   );
 
   const setEvidenceContent = useCallback(
@@ -887,6 +936,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       setCaseStatus,
       generateHash,
       verifyEvidence,
+      rebaselineEvidence,
       setEvidenceContent,
       setEvidenceNotes,
       reviewEvidence,
@@ -915,6 +965,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
       setCaseStatus,
       generateHash,
       verifyEvidence,
+      rebaselineEvidence,
       setEvidenceContent,
       setEvidenceNotes,
       reviewEvidence,

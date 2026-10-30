@@ -17,6 +17,12 @@ export interface ReportEvidenceRow {
   /** Optional on older stored reports (rendered as "—" when absent). */
   sourceMessageId?: string | null;
   sourceMessageNumber?: number | null;
+  /** Hash algorithm behind this row's baseline (null when not hashed). */
+  hashAlgorithm?: string | null;
+  /** Rule-based extraction confidence in [0,1] — a review aid, not a verdict. */
+  confidence?: number | null;
+  /** Which rule produced the indicator, e.g. RULE_BASED_REGEX:url_obfuscated. */
+  detectionMethod?: string | null;
 }
 
 export interface ReportSummary {
@@ -88,6 +94,23 @@ export interface EvidenceReport {
     hash: string | null;
     status: string;
     note: string;
+    hashAlgorithm?: string | null;
   }[];
   analystNotes: string;
+  /** Version assigned when this report was persisted (v1, v2, …). */
+  reportVersion?: number;
+  /** Algorithm used for every evidence baseline in this report. */
+  hashAlgorithm?: string;
+  /**
+   * Explicit provenance separation: where each class of statement in this
+   * report comes from. Older stored reports may lack this block.
+   */
+  provenance?: {
+    conversation: string;
+    ruleBased: string[];
+    aiAssisted: string[];
+    humanReviewed: string[];
+    unverifiedAssumptions: string[];
+    simulationOnly: string[];
+  };
 }

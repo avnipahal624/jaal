@@ -33,6 +33,9 @@ export const STATUS_SCREEN = {
     generated: { text: "#FFAA45", bg: "#302314", border: "#A8732C" },
     verified: { text: "#35C99A", bg: "#0B2B25", border: "#238B69" },
     mismatch: { text: "#F15B64", bg: "#321B20", border: "#A83E49" },
+    // Tamper simulation reuses the alert palette (same semantic family as a
+    // mismatch — no new status color); the label carries the distinction.
+    tampered: { text: "#F15B64", bg: "#321B20", border: "#A83E49" },
   },
   review: {
     needsreview: { text: "#FFAA45", bg: "#302314", border: "#A8732C" },
@@ -75,6 +78,7 @@ export const STATUS_PAPER = {
     generated: "#A8732C",
     verified: "#238B69",
     mismatch: "#A83E49",
+    tampered: "#A83E49",
   },
   review: {
     needsreview: "#A8732C",
@@ -115,10 +119,12 @@ const INTEGRITY_KEY: Record<string, keyof (typeof STATUS_SCREEN)["integrity"]> =
   HASH_GENERATED: "generated",
   INTEGRITY_VERIFIED: "verified",
   HASH_MISMATCH: "mismatch",
+  TAMPER_SIMULATION: "tampered",
   none: "nothashed",
   generated: "generated",
   verified: "verified",
   mismatch: "mismatch",
+  tampered: "tampered",
 };
 
 const REVIEW_KEY: Record<string, keyof (typeof STATUS_SCREEN)["review"]> = {
