@@ -263,6 +263,79 @@ create → message (operator or simulated) → analysis (tactics + intent + stra
 
 Convex-side keys are never exposed to the browser bundle.
 
+## Security, privacy & evidence-integrity notes
+
+These are deliberate limitations of the current implementation — read them
+before treating any JAAL output as authoritative.
+
+**Authentication & ownership**
+
+- Every guest login (`signInDemo` on the login page, `/auth` guest button)
+  establishes a Convex Auth **Anonymous** identity, so each browser session
+  gets its own unguessable server-validated owner ID. There is no shared or
+  predictable owner anywhere in the backend.
+- All mutations and case-scoped queries call `requireOwner` and throw an
+  authorization error when unauthenticated; case lookups always resolve
+  through the owner index, never a client-claimed `caseId` alone.
+- Frontend local state (localStorage reducer) is a convenience/offline layer
+  only — the backend never reads or trusts it.
+
+**Data retention & deletion**
+
+- All case data (investigations, messages, evidence, reports, logs, events,
+  `ai_requests`) lives in owner-scoped rows on the Convex deployment.
+- Deleting data: `jaal.resetCase` removes one case's runtime; `jaal.resetDemo`
+  wipes and reseeds the demo cases; removing the Convex deployment (or its
+  tables via the dashboard) deletes everything. There is currently no
+  automated retention schedule or per-case export job.
+- Conversation content and credentials are never written to `console.*` on
+  either side. Dashboard aggregates mask sensitive identifiers (emails,
+  phones, VPAs) before display.
+
+**Evidence integrity (SHA-256)**
+
+- Hashing proves **only** that content is byte-identical to a recorded
+  baseline. A SHA-256 value is **not** a legal authentication, digital
+  signature, notarization, or trusted timestamp — JAAL does not implement
+  RFC 3161 timestamps, signing keys, or a chain-of-custody log, and a hash
+  alone would not establish provenance in court.
+- Hash generation ≠ verification. States are distinct: `NOT_HASHED`,
+  `HASH_GENERATED`, `INTEGRITY_VERIFIED`, `HASH_MISMATCH`,
+  `TAMPER_SIMULATION`. Verification re-computes and compares; a mismatch
+  persists until an explicit re-baseline (`jaal.rebaselineEvidence`), which
+  is authenticated, requires a reason, and preserves the original hash and
+  full history (`hashHistory`, `contentHistory`, `verificationHistory`).
+  Rehashing never silently clears a mismatch.
+- `jaal.setEvidenceContent` is a **tamper-simulation** control for demos: it
+  records an `integrity_mismatch` event, snapshots the original content, and
+  flags the record — it does not overwrite the baseline.
+
+**AI handling & prompt injection**
+
+- LLM actions take only a `caseId`; the transcript is fetched server-side
+  through an ownership-checked query, rate-limited (8 requests / 60s per
+  owner, `ai_requests` table), and size-capped before being sent.
+- Transcript text is treated as **untrusted data**: it is passed inside
+  explicit `<transcript>` delimiters with instructions never to follow
+  commands found in it, control characters are stripped, and outputs are
+  zod-validated. This is a **best-effort defense, not a guarantee** — a
+  sufficiently adversarial transcript may still influence model output.
+  AI results are always labelled (ANTHROPIC vs SIMULATION engine) and
+  AI-assisted content is separated from rule-based findings in reports.
+- The Anthropic key lives only in Convex environment variables
+  (`ANTHROPIC_API_KEY`); it is never sent to the browser or logged.
+
+**Detection honesty**
+
+- Identifier extraction is deterministic rule-based detection (regex +
+  validation) with per-item confidence and detection method — a triage aid,
+  not proof of fraud. Each extracted item keeps its original source text and
+  source-message link; obfuscated forms (hxxp, `[dot]`) are flagged as such.
+- Reports separate: original conversation evidence, rule-based findings,
+  AI-assisted interpretations, human-reviewed findings, unverified
+  assumptions, and simulation-only content, plus the hash algorithm
+  (SHA-256), generation timestamp and report version.
+
 ## API reference (frontend service contract)
 
 The React app calls these through `src/state/JaalProvider.tsx`; they are the
@@ -316,19 +389,31 @@ client-claimed caseId alone.
 ## Testing
 
 ```bash
-bun run test        # vitest run — 34 tests
+bun run test        # vitest run — 107 tests across 7 files
 ```
 
 - `src/services/pipeline.test.ts` — unit tests for tactic detection, kill-chain
-  progression, identifier extraction (incl. dedupe + false-positive guards),
-  SHA-256 (canonical test vector), tamper detection, strategy generation,
-  simulation branching and report building.
+  progression, identifier extraction (incl. dedupe, false-positive guards,
+  multi-match, obfuscated URLs and phone validation), SHA-256 (canonical test
+  vector), tamper detection, strategy generation, simulation branching and
+  report building.
+- `src/services/transcriptParser.test.ts` — all supported import formats,
+  ordering, multiline continuation and honest import statistics (unparsed
+  lines are counted, never silently dropped).
 - `src/convex/workflow.test.ts` — integration tests against the mock Convex
   runtime (`convex-test`): create → message → analyze → extract → hash →
-  verify (match, then tamper → mismatch) → complete → report; plus
-  dedupe across messages, per-case rate limiting, pause/resume, archive,
-  settings persistence, demo seed/reset, and cross-owner authorization
-  rejection.
+  verify (match, then tamper → mismatch) → complete → report; plus dedupe
+  across messages, per-case rate limiting, pause/resume, archive, settings
+  persistence, demo seed/reset, and cross-owner authorization rejection.
+- `src/convex/security.test.ts` — unauthenticated rejection on every write
+  path, cross-owner isolation (reads and mutations), the AI request rate
+  limit, and the full evidence lifecycle: generation ≠ verification,
+  persistent HASH_MISMATCH, refusal to rehash on mismatch, reason-bound
+  re-baseline with preserved hash/verification history, and tamper
+  simulation keeping the original snapshot.
+- `src/convex/evidenceGraph.test.ts` — graph projection cross-checked against
+  the underlying tables, per-owner isolation, stable ids.
+- `src/theme/status.test.ts` — screen/paper status palette contracts.
 
 The suite runs entirely without an external AI provider (simulation engine).
 

@@ -143,6 +143,7 @@ describe("paper/print palette — exact spec hexes", () => {
       generated: "#A8732C",
       verified: "#238B69",
       mismatch: "#A83E49",
+      tampered: "#A83E49",
     });
     expect(STATUS_PAPER.review).toEqual({
       needsreview: "#A8732C",

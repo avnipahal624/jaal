@@ -20,7 +20,11 @@ const FLAGS = {
 } as const;
 
 function setup() {
-  return convexTest(schema, modules);
+  // The backend rejects unauthenticated callers — every derived instance
+  // (including withIdentity switches) carries an identity.
+  return convexTest(schema, modules).withIdentity({
+    subject: "test-graph-operator",
+  });
 }
 
 type T = ReturnType<typeof setup>;

@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
+import { useConvexAuth } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 import { clearDemoSession, setDemoSession } from "@/lib/demoSession";
 import { api as httpApi, probeBackend, tryApi, type BackendStatus } from "@/services/api";
@@ -19,6 +21,7 @@ import {
   transcriptEvidence,
 } from "@/services/evidenceService";
 import { buildReport } from "@/services/reportService";
+import { parseTranscript } from "@/services/transcriptParser";
 import { arcExhausted, nextScammerTurn } from "@/services/simulationService";
 import type { Investigation, ScamCategory, DetectionMode } from "@/types/investigation";
 import type { ConversationMessage } from "@/types/message";
@@ -50,8 +53,8 @@ export interface CreateCaseInput {
 interface JaalContextValue {
   state: JaalState;
   // auth / session
-  signInDemo: (name: string, email: string) => void;
-  signOutDemo: () => void;
+  signInDemo: (name: string, email: string) => Promise<void>;
+  signOutDemo: () => Promise<void>;
   updateProfile: (name: string) => void;
   setBackendStatus: (status: BackendStatus) => void;
   // cases
@@ -125,6 +128,11 @@ type RemoteState = {
 export function JaalProvider({ children }: { children: ReactNode }) {
   const [localState, dispatch] = useReducer(reducer, null, loadState);
   const [typingMap, setTypingMap] = useState<Record<string, boolean>>({});
+
+  // Convex Auth actions — the simulation login establishes a real,
+  // per-guest Anonymous identity so backend ownership is never shared.
+  const { signIn, signOut } = useAuthActions();
+  const { isAuthenticated } = useConvexAuth();
 
   // ---- Backend (Convex) wiring ------------------------------------------
   const remote = useQuery(api.jaal.state) as RemoteState | null | undefined;
@@ -281,15 +289,45 @@ export function JaalProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const signInDemo = useCallback((name: string, email: string) => {
-    const session = setDemoSession(name, email);
-    dispatch({ type: "SET_USER", user: session });
-  }, []);
+  const signInDemo = useCallback(
+    async (name: string, email: string) => {
+      // Establish a server-validated, unguessable identity for this guest
+      // session (Convex Auth Anonymous provider). The backend rejects
+      // unauthenticated calls and never assigns a shared "demo" owner, so
+      // one guest can never read or modify another guest's data. Visitors
+      // who already have a real session keep their own identity.
+      if (!isAuthenticated) {
+        try {
+          await signIn("anonymous");
+        } catch {
+          dispatch({
+            type: "NOTIFY",
+            notification: {
+              title: "Backend session unavailable",
+              detail:
+                "Could not establish an isolated simulation session — case data will not persist to the backend.",
+              kind: "system",
+            },
+          });
+        }
+      }
+      const session = setDemoSession(name, email);
+      dispatch({ type: "SET_USER", user: session });
+    },
+    [isAuthenticated, signIn],
+  );
 
-  const signOutDemo = useCallback(() => {
+  const signOutDemo = useCallback(async () => {
     clearDemoSession();
     dispatch({ type: "SET_USER", user: null });
-  }, []);
+    if (isAuthenticated) {
+      try {
+        await signOut();
+      } catch {
+        /* local session cleared regardless */
+      }
+    }
+  }, [isAuthenticated, signOut]);
 
   const updateProfile = useCallback((name: string) => {
     const current = stateRef.current.user;
@@ -325,32 +363,30 @@ export function JaalProvider({ children }: { children: ReactNode }) {
         flags: input.flags,
       };
 
-      // Parse transcript locally (for the synchronous count + optimistic UI),
-      // then persist through the backend pipeline.
+      // Parse transcript locally with the SHARED parser (same rules as the
+      // backend: multiline, timestamps, unpreserved-line tracking) for the
+      // synchronous count + optimistic UI, then persist through the backend
+      // pipeline and surface its authoritative import summary.
       let seedMessages: ConversationMessage[] = [];
       let transcriptDraft: ReturnType<typeof transcriptEvidence> | null = null;
       if (input.transcript?.trim()) {
-        const rawLines = input.transcript.split(/\r?\n/).filter((l) => l.trim());
-        let stamp = 0;
-        const parsed: ConversationMessage[] = [];
-        for (const line of rawLines) {
-          const m = line.match(
-            /^(?:\[?\d{1,2}:\d{2}(?::\d{2})?\]?\s*)?([A-Za-z][A-Za-z ]{1,20}):\s*(.+)$/,
-          );
-          if (!m) continue;
-          const who = m[1]!.toLowerCase().trim();
-          const isDecoy = /^(me|you|decoy|self|operator|user|jaal)$/.test(who);
-          parsed.push({
+        const parsedTranscript = parseTranscript(input.transcript);
+        const parsed: ConversationMessage[] = parsedTranscript.messages.map(
+          (m, idx) => ({
             id: uid("msg"),
             caseId,
-            author: isDecoy ? "decoy" : "scammer",
-            text: m[2]!,
-            timestamp: now + stamp * 1500,
+            author: m.sender === "decoy" ? "decoy" : "scammer",
+            text: m.text,
+            timestamp: m.timestamp ?? now + idx * 1500,
             source: input.source === "paste" ? "OPERATOR" : "TRANSCRIPT-IMPORT",
-            status: isDecoy ? "DECOY-ACTIVE" : undefined,
-          });
-          stamp += 1;
-        }
+            status:
+              m.sender === "decoy"
+                ? "DECOY-ACTIVE"
+                : m.needsReview
+                  ? "NEEDS-REVIEW"
+                  : undefined,
+          }),
+        );
         seedMessages = parsed;
         if (parsed.length > 0) transcriptDraft = transcriptEvidence(caseId, parsed);
       }
@@ -368,17 +404,38 @@ export function JaalProvider({ children }: { children: ReactNode }) {
           detectionMode: input.detectionMode,
           flags: input.flags,
           transcript: input.transcript,
-        }).catch(() => {
-          dispatch({
-            type: "NOTIFY",
-            notification: {
-              title: `Case ${caseId} not persisted`,
-              detail: "Backend unavailable — the case exists locally for this session only.",
-              caseId,
-              kind: "system",
-            },
+        })
+          .then((res) => {
+            // Authoritative import summary from the backend parse — never
+            // claim full success when lines were skipped or unparsed.
+            const stats = res?.import;
+            if (!stats) return;
+            const skipped = stats.unparsedLines;
+            const warnings = stats.warnings.length;
+            const partial = skipped > 0 || warnings > 0;
+            dispatch({
+              type: "NOTIFY",
+              notification: {
+                title: partial
+                  ? `Imported with gaps · ${caseId}`
+                  : `Transcript imported · ${caseId}`,
+                detail: `${stats.totalLines} lines · ${stats.messagesImported} messages${skipped > 0 ? ` · ${skipped} unparsed` : ""}${stats.continuationLines > 0 ? ` · ${stats.continuationLines} multiline` : ""}${warnings > 0 ? ` · ${warnings} warning${warnings > 1 ? "s" : ""}` : ""}`,
+                caseId,
+                kind: partial ? "system" : "evidence",
+              },
+            });
+          })
+          .catch(() => {
+            dispatch({
+              type: "NOTIFY",
+              notification: {
+                title: `Case ${caseId} not persisted`,
+                detail: "Backend unavailable — the case exists locally for this session only.",
+                caseId,
+                kind: "system",
+              },
+            });
           });
-        });
       }
 
       return caseId;

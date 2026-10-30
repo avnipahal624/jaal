@@ -80,11 +80,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       const formData = new FormData(event.currentTarget);
       await signIn("email-otp", formData);
 
-      console.log("signed in");
-
       navigate(redirect);
     } catch (error) {
-      console.error("OTP verification error:", error);
+      console.error("OTP verification error:", error instanceof Error ? error.message : error);
 
       setError("The verification code you entered is incorrect.");
       setIsLoading(false);
@@ -97,13 +95,15 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      console.log("Attempting anonymous sign in...");
       await signIn("anonymous");
-      console.log("Anonymous sign in successful");
       navigate(redirect);
     } catch (error) {
-      console.error("Guest login error:", error);
-      console.error("Error details:", JSON.stringify(error, null, 2));
+      // Log only a short message — never raw error payloads, which can carry
+      // session/token details.
+      console.error(
+        "Guest login error:",
+        error instanceof Error ? error.message : error,
+      );
       setError(`Failed to sign in as guest: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setIsLoading(false);
     }

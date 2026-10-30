@@ -61,7 +61,7 @@ export default function LoginPage() {
     await new Promise((r) => setTimeout(r, 700));
     if (remember) localStorage.setItem(REMEMBER_KEY, email);
     else localStorage.removeItem(REMEMBER_KEY);
-    signInDemo(email.split("@")[0] || "Operator", email);
+    await signInDemo(email.split("@")[0] || "Operator", email);
     setLoading(null);
     finish();
   };
@@ -70,7 +70,7 @@ export default function LoginPage() {
     setError(null);
     setLoading("demo");
     await new Promise((r) => setTimeout(r, 550));
-    signInDemo("Simulation Operator", "operator@jaal.demo");
+    await signInDemo("Simulation Operator", "operator@jaal.demo");
     setLoading(null);
     finish();
   };

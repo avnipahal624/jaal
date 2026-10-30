@@ -25,10 +25,10 @@ const PHONE_RE_G = new RegExp(PHONE_RE.source, "g");
 // Obfuscation-aware URL detection: hxxp://, http[: ]//, www. prefixes, plus
 // bracketed/dotted domains like `portal[dot]example[dot]com`.
 const URL_RE =
-  /\b(?:(?:https?|hxxps?|ftps?):(?:\/\/|\[:\]\/\/)|www\.)[^\s,;"')\]]+/i;
+  /\b(?:(?:https?|hxxps?|ftps?)(?::\/\/|\[:\]\/\/)|www\.)[^\s,;"')\]]+/i;
 const URL_RE_G = new RegExp(URL_RE.source, "gi");
 const DOT_DOMAIN_RE =
-  /\b[a-z0-9][a-z0-9-]{1,}(?:\s*(?:\[|\()\s*dot\s*(?:\]|\))\s*)[a-z0-9.]+/i;
+  /\b[a-z0-9][a-z0-9-]{1,}(?:\s*(?:\[|\()\s*dot\s*(?:\]|\))\s*[a-z0-9][a-z0-9.-]*)+/i;
 const DOT_DOMAIN_RE_G = new RegExp(DOT_DOMAIN_RE.source, "gi");
 const MONEY_RE = /(?:₹|rs\.?\s?|inr\s?)\s?\d[\d,]*(?:\s?\d+)?/i;
 const MONEY_RE_G = new RegExp(MONEY_RE.source, "gi");
@@ -47,11 +47,17 @@ export interface EvidenceDraft {
 
 /** A TLD-looking tail after the last dot (basic URL validation). */
 function looksLikeUrl(value: string): boolean {
-  const cleaned = value.replace(/[.,;:!?\])]+$/, "");
-  const host = cleaned
-    .replace(/^(?:https?|hxxps?|ftps?):(?:\/\/|\[:\]\/\/)/i, "")
-    .replace(/^www\./i, "")
-    .split(/[/?#]/)[0] ?? "";
+  // Normalize obfuscation markers first: `portal[dot]example[dot]com` →
+  // `portal.example.com`, `https[:]//` → `https://`.
+  const cleaned = value
+    .replace(/[.,;:!?\])]+$/, "")
+    .replace(/\s*(?:\[|\()\s*dot\s*(?:\]|\))\s*/gi, ".")
+    .replace(/\[:\]/g, ":");
+  const host =
+    cleaned
+      .replace(/^(?:https?|hxxps?|ftps?)(?::\/\/|\[:\]\/\/)/i, "")
+      .replace(/^www\./i, "")
+      .split(/[/?#]/)[0] ?? "";
   if (!host.includes(".")) return false;
   const tld = host.split(".").pop() ?? "";
   return /^[a-z]{2,}$/i.test(tld);
@@ -158,8 +164,16 @@ export function extractIdentifiers(message: ConversationMessage): EvidenceDraft[
   ];
   for (const url of urlSpans) {
     if (!looksLikeUrl(url)) continue;
-    const obfuscated = /^(?:hxxps?|ftp)/i.test(url) || /\[(?:dot|\.)/i.test(url);
-    push("url", url, obfuscated ? 0.75 : 0.92, "RULE_BASED_REGEX:url_obfuscated");
+    const obfuscated =
+      /^(?:hxxps?|ftps?):/i.test(url) ||
+      /\[(?:dot|:|\.\.)\]/i.test(url) ||
+      /\(dot\)/i.test(url);
+    push(
+      "url",
+      url,
+      obfuscated ? 0.75 : 0.92,
+      obfuscated ? "RULE_BASED_REGEX:url_obfuscated" : "RULE_BASED_REGEX:url",
+    );
     scan = scan.replace(url, " ".repeat(url.length));
   }
 
@@ -196,6 +210,8 @@ export function transcriptEvidence(
     label: "Transcript",
     value: `${messages.length}-message synthetic transcript`,
     content: `Transcript (${caseId}):\n${content}`,
+    confidence: 1,
+    method: "CAPTURED_TRANSCRIPT:verbatim",
   };
 }
 

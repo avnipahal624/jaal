@@ -160,6 +160,85 @@ describe("identifier extraction", () => {
   });
 });
 
+describe("identifier extraction — multiple matches, obfuscation, confidence", () => {
+  it("finds every distinct indicator of a type in one message (multi-match)", () => {
+    const drafts = extractIdentifiers(
+      scammer(
+        "Pay alpha.qa@okaxis or beta.qa@okaxis, call 9876543210 or 9112233445, portals https://a.example and https://b.example",
+      ),
+    );
+    expect(drafts.filter((d) => d.type === "upi")).toHaveLength(2);
+    expect(drafts.filter((d) => d.type === "phone")).toHaveLength(2);
+    expect(drafts.filter((d) => d.type === "url")).toHaveLength(2);
+    const values = drafts.map((d) => d.value);
+    expect(values).toContain("alpha.qa@okaxis");
+    expect(values).toContain("9112233445");
+  });
+
+  it("detects obfuscated URLs and labels them with the obfuscation method", () => {
+    const drafts = extractIdentifiers(
+      scammer(
+        "Open hxxp://portal.secure-verify.example or type portal[dot]mail[dot]example or https[:]//login.verify-jaal.example now",
+      ),
+    );
+    const urls = drafts.filter((d) => d.type === "url");
+    expect(urls).toHaveLength(3);
+    expect(
+      urls.every((d) => d.method === "RULE_BASED_REGEX:url_obfuscated"),
+    ).toBe(true);
+    // Obfuscated matches carry a lower heuristic confidence than clean ones.
+    expect(Math.max(...urls.map((d) => d.confidence))).toBeLessThan(0.9);
+    // Original obfuscated text is preserved verbatim, not normalized away.
+    expect(urls.map((d) => d.value)).toContain("hxxp://portal.secure-verify.example");
+    expect(urls.map((d) => d.value)).toContain("portal[dot]mail[dot]example");
+  });
+
+  it("keeps a clean URL distinct from its obfuscated siblings with higher confidence", () => {
+    const drafts = extractIdentifiers(
+      scammer("See https://track.india-post.example and hxxp://india-post.example"),
+    );
+    const urls = drafts.filter((d) => d.type === "url");
+    expect(urls).toHaveLength(2);
+    const clean = urls.find((d) => d.value.startsWith("https://"))!;
+    const obfuscated = urls.find((d) => d.value.startsWith("hxxp"))!;
+    expect(clean.method).toBe("RULE_BASED_REGEX:url");
+    expect(obfuscated.method).toBe("RULE_BASED_REGEX:url_obfuscated");
+    expect(clean.confidence).toBeGreaterThan(obfuscated.confidence);
+  });
+
+  it("rejects phone numbers that are short, long, or do not start 6–9", () => {
+    expect(
+      extractIdentifiers(scammer("Dial 4123456789 for the desk")).some(
+        (d) => d.type === "phone",
+      ),
+    ).toBe(false);
+    expect(
+      extractIdentifiers(scammer("Dial 98765432101234 for the desk")).some(
+        (d) => d.type === "phone",
+      ),
+    ).toBe(false);
+    expect(
+      extractIdentifiers(scammer("Dial 9876543210 for the desk")).filter(
+        (d) => d.type === "phone",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("every draft carries a detection method, confidence and its source text", () => {
+    const drafts = extractIdentifiers(
+      scammer("Pay ₹500 to scams.demo@okhdfc and read https://x.example"),
+    );
+    expect(drafts.length).toBeGreaterThanOrEqual(3);
+    for (const d of drafts) {
+      expect(d.method).toMatch(/^RULE_BASED_REGEX:/);
+      expect(d.confidence).toBeGreaterThan(0);
+      expect(d.confidence).toBeLessThanOrEqual(1);
+      expect(d.content).toContain("Source message");
+      expect(d.content).toContain("Pay ₹500");
+    }
+  });
+});
+
 describe("SHA-256 integrity", () => {
   it("matches the canonical SHA-256 test vector", async () => {
     expect(await sha256Hex("abc")).toBe(
