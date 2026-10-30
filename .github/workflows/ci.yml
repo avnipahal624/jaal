@@ -25,6 +25,8 @@ jobs:
         run: bun run lint
       - name: Generate Convex types
         run: bunx convex codegen
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       - name: Build and typecheck
         run: bun run build
       - name: Run tests
