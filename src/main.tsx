@@ -1,6 +1,7 @@
 import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { AppShell } from "@/components/layout/AppShell";
 import { JaalProvider } from "@/state/JaalProvider";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
@@ -26,7 +27,6 @@ const InvestigationCompletePage = lazy(
   () => import("./pages/InvestigationCompletePage.tsx"),
 );
 const AiIntelligencePage = lazy(() => import("./pages/AiIntelligencePage.tsx"));
-;
 const EvidencePage = lazy(() => import("./pages/EvidencePage.tsx"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage.tsx"));
 const ReportDetailPage = lazy(() => import("./pages/ReportDetailPage.tsx"));
@@ -135,39 +135,40 @@ createRoot(document.getElementById("root")!).render(
         <JaalProvider>
           <BrowserRouter>
             <RouteSyncer />
-            <Suspense fallback={<RouteLoading />}>
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route
-                  path="/auth"
-                  element={<AuthPage redirectAfterAuth="/dashboard" />}
-                />
-                <Route path="/login" element={<LoginPage />} />
-                <Route
-                  element={
-                    <RequireAuth>
-                      <AppShell />
-                    </RequireAuth>
-                  }
-                >
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/investigations" element={<InvestigationsPage />} />
-                  <Route path="/investigations/new" element={<NewInvestigationPage />} />                  <Route path="/investigations/:id" element={<InvestigationWorkspacePage />} />
-                  <Route path="/investigations/:id/intelligence" element={<AiIntelligencePage />} />
-                  <Route path="/investigations/:id/intelligence" element={<AiIntelligencePage />} />
-                  <Route path="/investigations/:id/intelligence" element={<AiIntelligencePage />} />
-          <Route
-            path="/investigations/:id/complete"
-            element={<InvestigationCompletePage />}
-          />
-                  <Route path="/evidence" element={<EvidencePage />} />
-                  <Route path="/reports" element={<ReportsPage />} />
-                  <Route path="/reports/:id" element={<ReportDetailPage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                </Route>
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
+            <RouteErrorBoundary>
+              <Suspense fallback={<RouteLoading />}>
+                <Routes>
+                  <Route path="/" element={<Landing />} />
+                  <Route
+                    path="/auth"
+                    element={<AuthPage redirectAfterAuth="/dashboard" />}
+                  />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route
+                    element={
+                      <RequireAuth>
+                        <AppShell />
+                      </RequireAuth>
+                    }
+                  >
+                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/investigations" element={<InvestigationsPage />} />
+                    <Route path="/investigations/new" element={<NewInvestigationPage />} />
+                    <Route path="/investigations/:id" element={<InvestigationWorkspacePage />} />
+                    <Route path="/investigations/:id/intelligence" element={<AiIntelligencePage />} />
+                    <Route
+                      path="/investigations/:id/complete"
+                      element={<InvestigationCompletePage />}
+                    />
+                    <Route path="/evidence" element={<EvidencePage />} />
+                    <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/reports/:id" element={<ReportDetailPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                  </Route>
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
+            </RouteErrorBoundary>
           </BrowserRouter>
           <Toaster />
         </JaalProvider>

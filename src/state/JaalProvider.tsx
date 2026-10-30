@@ -53,7 +53,7 @@ export interface CreateCaseInput {
 interface JaalContextValue {
   state: JaalState;
   // auth / session
-  signInDemo: (name: string, email: string) => Promise<void>;
+  signInDemo: (name: string, email: string) => Promise<boolean>;
   signOutDemo: () => Promise<void>;
   updateProfile: (name: string) => void;
   setBackendStatus: (status: BackendStatus) => void;
@@ -290,7 +290,7 @@ export function JaalProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInDemo = useCallback(
-    async (name: string, email: string) => {
+    async (name: string, email: string): Promise<boolean> => {
       // Establish a server-validated, unguessable identity for this guest
       // session (Convex Auth Anonymous provider). The backend rejects
       // unauthenticated calls and never assigns a shared "demo" owner, so
@@ -309,10 +309,16 @@ export function JaalProvider({ children }: { children: ReactNode }) {
               kind: "system",
             },
           });
+          // No server-validated identity means every owner-scoped query would
+          // be rejected, so don't record a session that can't actually be used
+          // (RequireAuth would otherwise let it through and the route would
+          // crash on its first query).
+          return false;
         }
       }
       const session = setDemoSession(name, email);
       dispatch({ type: "SET_USER", user: session });
+      return true;
     },
     [isAuthenticated, signIn],
   );

@@ -17,6 +17,7 @@ import {
   Radio,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
+import { useConvexAuth } from "convex/react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 const REMEMBER_KEY = "jaal.rememberEmail";
@@ -26,6 +27,10 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const returnTo = params.get("returnTo") || "/dashboard";
+  // A local demo label alone is not an identity — only re-enter the console
+  // once Convex Auth confirms one, otherwise RequireAuth bounces us straight
+  // back here and we loop.
+  const { isAuthenticated: hasIdentity } = useConvexAuth();
 
   const [email, setEmail] = useState(
     () => localStorage.getItem(REMEMBER_KEY) ?? "",
@@ -39,8 +44,8 @@ export default function LoginPage() {
 
   // Already has a session → go straight to the console.
   useEffect(() => {
-    if (state.user) navigate(returnTo, { replace: true });
-  }, [state.user, navigate, returnTo]);
+    if (state.user && hasIdentity) navigate(returnTo, { replace: true });
+  }, [state.user, hasIdentity, navigate, returnTo]);
 
   const finish = () => {
     navigate(returnTo, { replace: true });
@@ -61,8 +66,14 @@ export default function LoginPage() {
     await new Promise((r) => setTimeout(r, 700));
     if (remember) localStorage.setItem(REMEMBER_KEY, email);
     else localStorage.removeItem(REMEMBER_KEY);
-    await signInDemo(email.split("@")[0] || "Operator", email);
+    const ok = await signInDemo(email.split("@")[0] || "Operator", email);
     setLoading(null);
+    if (!ok) {
+      setError(
+        "Could not establish a session. Check your connection and try again.",
+      );
+      return;
+    }
     finish();
   };
 
@@ -70,8 +81,14 @@ export default function LoginPage() {
     setError(null);
     setLoading("demo");
     await new Promise((r) => setTimeout(r, 550));
-    await signInDemo("Simulation Operator", "operator@jaal.demo");
+    const ok = await signInDemo("Simulation Operator", "operator@jaal.demo");
     setLoading(null);
+    if (!ok) {
+      setError(
+        "Could not start a simulation session. Check your connection and try again.",
+      );
+      return;
+    }
     finish();
   };
 

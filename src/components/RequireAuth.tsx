@@ -8,7 +8,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
-import { getDemoSession } from "@/lib/demoSession";
 import { Loader2, Lock, Radio } from "lucide-react";
 import type { ReactNode } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
@@ -39,10 +38,13 @@ export function RequireAuth({
   const { isLoading, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  // A local demo session also grants access — clearly labelled as simulation.
-  const demoSession = getDemoSession();
 
-  if (isLoading && !demoSession) {
+  // A local demo session is only a UI label (name, email, "simulation"
+  // badge) — it is not an identity. Every case-scoped query is owner-checked
+  // server-side, so rendering children before Convex Auth has resolved an
+  // identity makes those queries reject and takes the whole route tree down
+  // with them. Wait for the real identity, then block if there isn't one.
+  if (isLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-primary" />
@@ -50,7 +52,7 @@ export function RequireAuth({
     );
   }
 
-  if (!isAuthenticated && !demoSession) {
+  if (!isAuthenticated) {
     const returnTo = `${location.pathname}${location.search}`;
     const signInHref = `/auth?returnTo=${encodeURIComponent(returnTo)}`;
     const simulationHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
