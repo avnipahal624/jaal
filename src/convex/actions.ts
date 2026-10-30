@@ -44,7 +44,7 @@ async function tryLLMStrategy(
       activeStage: inv.currentStage,
     });
     if (res.suggestion) {
-      await ctx.runMutation(api.jaal.applyStrategyOverride, {
+      await ctx.runMutation(internal.jaal.applyStrategyOverride, {
         caseId,
         override: res.suggestion as Suggestion,
       });
@@ -141,7 +141,7 @@ export const generateReportWithAI = action({
           stages: meta.stages,
         });
         if (res?.summary) {
-          await ctx.runMutation(api.jaal.applyReportSummary, {
+          await ctx.runMutation(internal.jaal.applyReportSummary, {
             caseId: args.caseId,
             reportId: report.id,
             summary: res.summary,
