@@ -68,6 +68,7 @@ export function EvidenceDrawer({
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     if (item) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResult(null);
       setEditing(false);
       setDraftContent(item.content);
