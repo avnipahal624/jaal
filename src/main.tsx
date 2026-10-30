@@ -25,6 +25,8 @@ const InvestigationWorkspacePage = lazy(
 const InvestigationCompletePage = lazy(
   () => import("./pages/InvestigationCompletePage.tsx"),
 );
+const AiIntelligencePage = lazy(() => import("./pages/AiIntelligencePage.tsx"));
+;
 const EvidencePage = lazy(() => import("./pages/EvidencePage.tsx"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage.tsx"));
 const ReportDetailPage = lazy(() => import("./pages/ReportDetailPage.tsx"));
@@ -150,11 +152,10 @@ createRoot(document.getElementById("root")!).render(
                 >
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/investigations" element={<InvestigationsPage />} />
-                  <Route path="/investigations/new" element={<NewInvestigationPage />} />
-          <Route
-            path="/investigations/:id"
-            element={<InvestigationWorkspacePage />}
-          />
+                  <Route path="/investigations/new" element={<NewInvestigationPage />} />                  <Route path="/investigations/:id" element={<InvestigationWorkspacePage />} />
+                  <Route path="/investigations/:id/intelligence" element={<AiIntelligencePage />} />
+                  <Route path="/investigations/:id/intelligence" element={<AiIntelligencePage />} />
+                  <Route path="/investigations/:id/intelligence" element={<AiIntelligencePage />} />
           <Route
             path="/investigations/:id/complete"
             element={<InvestigationCompletePage />}

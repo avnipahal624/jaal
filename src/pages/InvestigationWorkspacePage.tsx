@@ -11,6 +11,7 @@ import { AiStrategyPanel } from "@/components/analysis/AiStrategyPanel";
 import { DetectedTactics } from "@/components/analysis/DetectedTactics";
 import { CaseRail } from "@/components/investigation/CaseRail";
 import { WorkspaceHeader } from "@/components/investigation/WorkspaceHeader";
+import { Link } from "react-router";
 import { Panel } from "@/components/ui/panel";
 import { api } from "@/convex/_generated/api";
 import { useJaal } from "@/state/JaalProvider";
@@ -209,17 +210,26 @@ export default function InvestigationWorkspacePage() {
           <Panel
             label="AI analysis"
             right={
-              <span
-                className="whitespace-nowrap border px-1.5 py-px font-mono text-[8px] uppercase tracking-widest"
-                style={statusStyle(
-                  "engine",
-                  runtime.strategy?.source === "ANTHROPIC"
-                    ? "claude"
-                    : "simulation",
-                )}
-              >
-                {engineLabel}
-              </span>
+              <>
+                <Link
+                  to={`/investigations/${investigation.id}/intelligence`}
+                  className="whitespace-nowrap border px-1.5 py-px font-mono text-[8px] uppercase tracking-widest"
+                  style={statusStyle("engine", runtime.strategy?.source === "ANTHROPIC" ? "claude" : "simulation")}
+                >
+                  Intelligence hub
+                </Link>
+                <span
+                  className="whitespace-nowrap border px-1.5 py-px font-mono text-[8px] uppercase tracking-widest"
+                  style={statusStyle(
+                    "engine",
+                    runtime.strategy?.source === "ANTHROPIC"
+                      ? "claude"
+                      : "simulation",
+                  )}
+                >
+                  {engineLabel}
+                </span>
+              </>
             }
           >
             <AiAnalysisPanel runtime={runtime} />
