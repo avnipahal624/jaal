@@ -1031,6 +1031,11 @@ export const generateHash = mutation({
     if (!doc) throw new Error("Evidence not found");
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
+    // A generated hash is the baseline. Never silently replace an existing
+    // baseline; use verifyEvidence to compare current content against it.
+    if (doc.integrityHash) {
+      throw new Error("A baseline hash already exists. Verify the existing hash instead of replacing it.");
+    }
     const hash = await sha256Hex(doc.content);
     const at = Date.now();
     await ctx.db.patch(evidenceId, {
@@ -1065,26 +1070,8 @@ export const verifyEvidence = mutation({
     if (doc.owner !== owner) throw new Error("Not authorized");
     const inv = await ctx.db.get(doc.investigationId);
     if (!doc.integrityHash) {
-      // No recorded hash — generate one, report the generated state.
-      const hash = await sha256Hex(doc.content);
-      const at = Date.now();
-      await ctx.db.patch(evidenceId, {
-        integrityHash: hash,
-        integrityAlgorithm: "SHA-256",
-        integrityStatus: "HASH_GENERATED",
-        hashGeneratedAt: at,
-      });
-      if (inv) {
-        await pushEvent(
-          ctx.db,
-          inv,
-          "hash_generated",
-          "Evidence hash generated",
-          `${doc.label}: ${doc.extractedValue}`,
-          at,
-        );
-        await pushLog(ctx.db, inv, "success", `SHA-256 hash generated · ${doc.label}`, at);
-      }
+      // Verification cannot establish integrity without a pre-existing baseline.
+      // Generate the baseline explicitly with generateHash, then verify it.
       return "error";
     }
     const recomputed = await sha256Hex(doc.content);
@@ -1133,16 +1120,27 @@ export const setEvidenceContent = mutation({
     if (!doc) return;
     const owner = await requireOwner(ctx);
     if (doc.owner !== owner) throw new Error("Not authorized");
-    await ctx.db.patch(evidenceId, { content, tampered: true });
+    if (content.length > 20_000) throw new Error("Evidence content exceeds the 20,000 character limit.");
     const inv = await ctx.db.get(doc.investigationId);
-    if (inv) {
-      await pushLog(
-        ctx.db,
-        inv,
-        "warn",
-        "Evidence content modified by operator (integrity demo)",
-      );
+    // Content mutation exists only to demonstrate hash mismatch in synthetic
+    // training cases. Never expose it for imported/pasted evidence.
+    if (!inv || inv.source !== "simulation") {
+      throw new Error("Evidence tampering is available only in controlled simulation cases.");
     }
+    if (!doc.integrityHash) {
+      throw new Error("Generate a baseline hash before running the integrity demo.");
+    }
+    await ctx.db.patch(evidenceId, {
+      content,
+      tampered: true,
+      integrityStatus: "HASH_GENERATED",
+    });
+    await pushLog(
+      ctx.db,
+      inv,
+      "warn",
+      "Synthetic evidence content modified by operator (integrity demo)",
+    );
   },
 });
 
