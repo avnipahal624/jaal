@@ -17,10 +17,44 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CATEGORY_COLORS: Record<string, string> = {
   SOCIAL_ENGINEERING: "border-jamber/50 bg-jamber/10 text-jamber",
-  PSYCHOLOGICAL_MANIPULATION: "border-jpurple/50 bg-jpurple/10 text-jpurple",
+  PSYCHOLOGICAL_MANIPULATION: "border-jteal/50 bg-jteal/10 text-jteal",
   FINANCIAL_MANIPULATION: "border-jamber/50 bg-jamber/10 text-jamber",
   INFORMATION_EXTRACTION: "border-jcyan/50 bg-jcyan/10 text-jcyan",
   CONVERSATION_BEHAVIOUR: "border-jmuted/50 bg-jmuted/10 text-jmuted",
+};
+
+/** Grounded shape produced by `groundThreat` (see convex/lib/intelligenceSchemas.ts). */
+interface MessageRef {
+  messageId: string;
+  quote: string;
+  n: number;
+}
+
+interface ThreatFinding {
+  id: string;
+  category: string;
+  tactic: string;
+  severity: string;
+  explanation: string;
+  confidence: string;
+  recommendedAction: string;
+  limitations: string[];
+  messageRefs: MessageRef[];
+}
+
+/** Four distinct colours — severity is never rendered in one flat tone. */
+const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
+const SEVERITY_BAR: Record<string, string> = {
+  CRITICAL: "bg-jred",
+  HIGH: "bg-jred/60",
+  MEDIUM: "bg-jamber",
+  LOW: "bg-jgreen",
+};
+const SEVERITY_TEXT: Record<string, string> = {
+  CRITICAL: "text-jred",
+  HIGH: "text-jred",
+  MEDIUM: "text-jamber",
+  LOW: "text-jgreen",
 };
 
 function SeverityPill({ severity }: { severity: string }) {
@@ -153,7 +187,64 @@ export function ThreatView({ caseId }: { caseId: string }) {
 
           {current.status === "COMPLETED" && current.output?.findings && current.output.findings.length > 0 ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
-              <div className="mb-3 flex flex-wrap gap-1.5">
+              {/* ---- Threat overview + severity distribution (§2.6) ---- */}
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                {current.output.overview && (
+                  <div className="border border-jborder/50 bg-jsurface/40 p-3">
+                    <p className="font-mono text-[8px] uppercase tracking-[0.2em] text-jmuted/60">
+                      Threat overview
+                    </p>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-jtext/90">
+                      {current.output.overview}
+                    </p>
+                  </div>
+                )}
+                <div className="border border-jborder/50 bg-jsurface/40 p-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="font-mono text-[8px] uppercase tracking-[0.2em] text-jmuted/60">
+                      Severity distribution
+                    </p>
+                    <span className="font-mono text-[10px] text-jtext">
+                      {current.output.findings.length} total
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1.5">
+                    {SEVERITY_ORDER.map((level) => {
+                      const n = current.output.findings.filter(
+                        (f: ThreatFinding) => f.severity === level,
+                      ).length;
+                      const max = Math.max(
+                        1,
+                        ...SEVERITY_ORDER.map((l) =>
+                          current.output.findings.filter(
+                            (f: ThreatFinding) => f.severity === l,
+                          ).length,
+                        ),
+                      );
+                      return (
+                        <div key={level} className="flex items-center gap-2">
+                          <span
+                            className={`w-[68px] shrink-0 font-mono text-[9px] uppercase tracking-wider ${SEVERITY_TEXT[level]}`}
+                          >
+                            {level}
+                          </span>
+                          <span className="h-1.5 flex-1 bg-jborder/40">
+                            <span
+                              className={`block h-full ${SEVERITY_BAR[level]}`}
+                              style={{ width: `${(n / max) * 100}%` }}
+                            />
+                          </span>
+                          <span className="w-4 shrink-0 text-right font-mono text-[10px] text-jtext">
+                            {n}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {(Object.keys(CATEGORY_LABELS) as string[]).map((cat) => (
                   <button
                     key={cat}
@@ -165,7 +256,7 @@ export function ThreatView({ caseId }: { caseId: string }) {
                 ))}
               </div>
 
-              {current.output.findings.map((f: any, i: number) => (
+              {current.output.findings.map((f: ThreatFinding, i: number) => (
                 <div
                   key={f.id}
                   className="border-b border-jborder/40 py-3 last:border-0 last:pb-0"
@@ -184,13 +275,13 @@ export function ThreatView({ caseId }: { caseId: string }) {
                     </Chip>
                   </div>
                   <p className="mt-1 text-[11px] leading-relaxed text-jtext/90">{f.explanation}</p>
-                  {f.recommendation && (
+                  {f.recommendedAction && (
                     <p className="mt-1 font-mono text-[9px] leading-relaxed text-jamber">
-                      → {f.recommendation}
+                      → {f.recommendedAction}
                     </p>
                   )}
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {f.messageRefs?.map((r: any) => (
+                    {f.messageRefs?.map((r: MessageRef) => (
                       <button
                         key={r.messageId}
                         type="button"

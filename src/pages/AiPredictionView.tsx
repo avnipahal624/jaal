@@ -27,12 +27,36 @@ const CATEGORY_COLORS: Record<string, string> = {
   SUSPICIOUS_LINK: "border-jamber/50 bg-jamber/10 text-jamber",
   LEGAL_THREAT: "border-jred/50 bg-jred/10 text-jred",
   URGENCY_ESCALATION: "border-jamber/50 bg-jamber/10 text-jamber",
-  NEW_AUTHORITY: "border-jpurple/50 bg-jpurple/10 text-jpurple",
+  NEW_AUTHORITY: "border-jteal/50 bg-jteal/10 text-jteal",
   REMOTE_ACCESS: "border-jamber/50 bg-jamber/10 text-jamber",
   CREDENTIAL_THEFT: "border-jred/50 bg-jred/10 text-jred",
   REPETITION: "border-jmuted/50 bg-jmuted/10 text-jmuted",
   OTHER: "border-jmuted/50 bg-jmuted/10 text-jmuted",
 };
+
+/** Grounded shape produced by `groundPrediction` (see convex/lib/intelligenceSchemas.ts). */
+interface MessageRef {
+  messageId: string;
+  quote: string;
+  n: number;
+}
+
+interface Prediction {
+  id: string;
+  action: string;
+  category: string;
+  explanation: string;
+  confidence: string;
+  risk: string;
+  suggestedResponse: string;
+  uncertainty: string;
+  messageRefs: MessageRef[];
+}
+
+interface PredictionIndicator {
+  label: string;
+  level: string;
+}
 
 function SeverityPill({ severity }: { severity: string }) {
   const tone =
@@ -177,7 +201,51 @@ export function PredictionView({ caseId }: { caseId: string }) {
                 )}
               </div>
 
-              {current.output.predictions.map((p: any, i: number) => (
+              {current.output.predictions[0] && (
+                <div className="mb-3 border border-jred/40 bg-jred/5 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="bg-jred px-2 py-0.5 font-mono text-[8px] uppercase tracking-widest text-background">
+                      Most likely next action
+                    </span>
+                    <SeverityPill severity={current.output.predictions[0].risk} />
+                    <Chip tone={AI_TONE.attention} className="font-mono text-[8px] uppercase tracking-wider">
+                      conf · {current.output.predictions[0].confidence}
+                    </Chip>
+                  </div>
+                  <p className="mt-2 font-mono text-[13px] font-semibold text-jtext">
+                    {current.output.predictions[0].action}
+                  </p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-jtext/90">
+                    {current.output.predictions[0].explanation}
+                  </p>
+                  <p className="mt-1 font-mono text-[9px] leading-relaxed text-jmuted/70">
+                    uncertain because: {current.output.predictions[0].uncertainty}
+                  </p>
+                  <p className="mt-1.5 font-mono text-[9px] leading-relaxed text-jamber">
+                    → {current.output.predictions[0].suggestedResponse}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {current.output.predictions[0].messageRefs?.map((r: MessageRef) => (
+                      <button
+                        key={r.messageId}
+                        type="button"
+                        onClick={() => navigate(`/investigations/${caseId}/intelligence?msg=${r.n ?? ""}`)}
+                        className="font-mono text-[9px] uppercase tracking-wider text-jcyan transition-colors hover:text-jcyan/60"
+                      >
+                        MSG #{r.n} · {r.quote?.slice(0, 60)}…
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {current.output.predictions.length > 1 && (
+                <p className="mb-2 font-mono text-[9px] uppercase tracking-[0.2em] text-jmuted/60">
+                  Other possible actions
+                </p>
+              )}
+
+              {current.output.predictions.slice(1).map((p: Prediction) => (
                 <div
                   key={p.id}
                   className="border-b border-jborder/40 py-3 last:border-0 last:pb-0"
@@ -203,7 +271,7 @@ export function PredictionView({ caseId }: { caseId: string }) {
                     → {p.suggestedResponse}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {p.messageRefs?.map((r: any) => (
+                    {p.messageRefs?.map((r: MessageRef) => (
                       <button
                         key={r.messageId}
                         type="button"
@@ -228,7 +296,7 @@ export function PredictionView({ caseId }: { caseId: string }) {
                 <div className="mt-3 border-t border-jborder/40 px-1">
                   <p className="font-mono text-[8px] uppercase tracking-widest text-jmuted/60">Indicators</p>
                   <div className="mt-1 flex flex-wrap gap-2">
-                    {current.output.indicators.map((x: any, i: number) => (
+                    {current.output.indicators.map((x: PredictionIndicator, i: number) => (
                       <span
                         key={i}
                         className={`font-mono text-[8px] uppercase tracking-wider border px-2 py-1 ${CATEGORY_COLORS[x.level] ?? ""}`}

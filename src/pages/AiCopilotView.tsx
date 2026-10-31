@@ -1,4 +1,4 @@
-import { useAction, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { api } from "@/convex/_generated/api";
@@ -16,12 +16,55 @@ const SUGGESTIONS = [
   "Summarise the conversation",
 ];
 
+/** Grounded answer shape stored by `appendCopilotTurn` (see groundCopilot). */
+interface MessageRef {
+  messageId: string;
+  quote: string;
+  n: number;
+}
+
+interface EvidenceRef {
+  evidenceId: string;
+  alias: string;
+}
+
+interface CopilotPoint {
+  text: string;
+  messageRefs: MessageRef[];
+  evidenceRefs: EvidenceRef[];
+}
+
+interface CopilotSections {
+  answer?: string;
+  points?: CopilotPoint[];
+  uncertainty?: string;
+  suggestedNextStep?: string;
+  sufficient?: boolean;
+}
+
+interface CopilotTurn {
+  id: string;
+  role: string;
+  content: string;
+  sections: CopilotSections | null;
+  status: string | null;
+  error: string | null;
+  at: number;
+}
+
 export function CopilotView({ caseId }: { caseId: string }) {
   const navigate = useNavigate();
   const history = useQuery(api.intelligence.copilotHistory, { caseId });
   const ask = useAction(api.intelligenceActions.copilotAskAction);
+  const clear = useMutation(api.intelligence.clearCopilot);
   const [question, setQuestion] = useState("");
   const [sending, setSending] = useState(false);
+  const [clearing, setClearing] = useState(false);
+
+  const turns = (history ?? null) as CopilotTurn[] | null;
+  const lastQuestion = [...(turns ?? [])]
+    .reverse()
+    .find((t) => t.role === "user")?.content;
 
   const send = async (q: string) => {
     setSending(true);
@@ -36,90 +79,200 @@ export function CopilotView({ caseId }: { caseId: string }) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!question.trim()) return;
-    send(question);
+    void send(question);
   };
+
+  const handleClear = async () => {
+    setClearing(true);
+    try {
+      await clear({ caseId });
+    } finally {
+      setClearing(false);
+    }
+  };
+
+  const failed = turns?.some((t) => t.error);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-jborder/50 px-3 py-2">
         <div>
-          <h2 className="font-mono text-[12px] font-semibold text-jtext">Investigation Copilot</h2>
+          <h2 className="font-mono text-[12px] font-semibold text-jtext">
+            Investigation Copilot
+          </h2>
           <p className="font-mono text-[8px] uppercase tracking-widest text-jmuted/60">
             Read-only · grounded · conversation stays untrusted
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="font-mono text-[10px] uppercase tracking-wider text-jcyan hover:bg-jcyan/10"
-          onClick={() => send(SUGGESTIONS[0])}
-        >
-          <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <circle cx="12" cy="12" r="10" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 12l2.5 2.5L16 6" />
-          </svg>
-          Why flagged
-        </Button>
+        <div className="flex flex-wrap gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="font-mono text-[10px] uppercase tracking-wider text-jcyan hover:bg-jcyan/10"
+            onClick={() => void send(SUGGESTIONS[0])}
+            disabled={sending}
+          >
+            Why flagged
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={clearing || !turns?.length}
+            className="font-mono text-[10px] uppercase tracking-wider text-jmuted hover:border-jred/50 hover:text-jred"
+            onClick={() => void handleClear()}
+          >
+            {clearing ? "Clearing…" : "Clear chat"}
+          </Button>
+        </div>
       </div>
 
       {/* History */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex flex-col gap-2 overflow-y-auto p-3" style={{ maxHeight: "60%" }}>
-          {history?.map((turn: any) => (
-            <div
-              key={turn.id}
-              className={`flex gap-2.5 rounded-md px-3 py-2 ${
-                turn.role === "user" ? "bg-jcyan/5" : "bg-jsurface/60"
-              }`}
-            >
-              <div className="flex shrink-0 items-center gap-2">
-                <span className={`font-mono text-[8px] uppercase tracking-widest ${turn.role === "user" ? "text-jcyan" : "text-jmuted/60"}`}>
-                  {turn.role === "user" ? "INVESTIGATOR" : "COPILOT"}
-                </span>
-                {turn.status === "COMPLETED" ? (
-                  <Chip tone={AI_TONE.success} className="font-mono text-[8px] uppercase tracking-wider">d</Chip>
-                ) : turn.status === "FAILED" ? (
-                  <Chip tone={AI_TONE.error} className="font-mono text-[8px] uppercase tracking-wider">f</Chip>
-                ) : turn.status === "UNAVAILABLE" ? (
-                  <Chip tone={AI_TONE.attention} className="font-mono text-[8px] uppercase tracking-wider">u</Chip>
-                ) : null}
-              </div>
-              {turn.role === "user" ? (
-                <p className="min-w-0 flex-1 text-[11px] text-jtext/90">{turn.content}</p>
-              ) : turn.error ? (
-                <p className="min-w-0 flex-1 text-[11px] text-jred/80">{turn.error}</p>
-              ) : turn.sections?.answer ? (
-                <p className="min-w-0 flex-1 text-[11px] leading-relaxed text-jtext/90">{turn.sections.answer}</p>
-              ) : turn.content ? (
-                <p className="min-w-0 flex-1 text-[11px] text-jmuted/80">{turn.content}</p>
-              ) : null}
-              {turn.sections?.answer && turn.sections.points?.map((pt: any, i: number) => (
-                <div key={i} className="ml-5 flex min-w-0 flex-wrap gap-2">
-                  <Chip tone={AI_TONE.neutral} className="font-mono text-[8px] uppercase tracking-wider">
-                    {pt.text?.slice(0, 60)}
-                  </Chip>
-                  {pt.messageRefs?.map((r: any) => (
-                    <button
-                      key={r.messageId}
-                      type="button"
-                      onClick={() => navigate(`/investigations/${caseId}/intelligence?msg=${r.n ?? ""}`)}
-                      className="font-mono text-[9px] uppercase tracking-wider text-jcyan transition-colors hover:text-jcyan/60"
+        <div
+          className="flex flex-col gap-2 overflow-y-auto p-3"
+          style={{ maxHeight: "60%" }}
+        >
+          {turns?.length ? (
+            turns.map((turn) => {
+              const s = turn.sections;
+              return (
+                <div
+                  key={turn.id}
+                  className={`rounded-md px-3 py-2 ${
+                    turn.role === "user" ? "bg-jcyan/5" : "bg-jsurface/60"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`font-mono text-[8px] uppercase tracking-widest ${
+                        turn.role === "user" ? "text-jcyan" : "text-jmuted/60"
+                      }`}
                     >
-                      MSG #{r.n}
-                    </button>
-                  ))}
+                      {turn.role === "user" ? "INVESTIGATOR" : "COPILOT"}
+                    </span>
+                    {turn.status === "COMPLETED" ? (
+                      <Chip
+                        tone={AI_TONE.success}
+                        className="font-mono text-[8px] uppercase tracking-wider"
+                      >
+                        answered
+                      </Chip>
+                    ) : turn.status === "FAILED" ? (
+                      <Chip
+                        tone={AI_TONE.error}
+                        className="font-mono text-[8px] uppercase tracking-wider"
+                      >
+                        failed
+                      </Chip>
+                    ) : turn.status === "UNAVAILABLE" ? (
+                      <Chip
+                        tone={AI_TONE.attention}
+                        className="font-mono text-[8px] uppercase tracking-wider"
+                      >
+                        unavailable
+                      </Chip>
+                    ) : null}
+                  </div>
+
+                  {turn.role === "user" ? (
+                    <p className="mt-1 min-w-0 text-[11px] leading-relaxed text-jtext/90">
+                      {turn.content}
+                    </p>
+                  ) : turn.error ? (
+                    <p className="mt-1 min-w-0 text-[11px] leading-relaxed text-jred/80">
+                      {turn.error}
+                    </p>
+                  ) : (
+                    <>
+                      {(s?.answer ?? turn.content) && (
+                        <p className="mt-1 min-w-0 text-[11px] leading-relaxed text-jtext/90">
+                          {s?.answer ?? turn.content}
+                        </p>
+                      )}
+
+                      {s?.sufficient === false && (
+                        <p className="mt-1.5 font-mono text-[9px] uppercase tracking-wider text-jamber">
+                          Insufficient information in this investigation — the
+                          copilot did not guess.
+                        </p>
+                      )}
+
+                      {s?.points?.map((pt, i) => (
+                        <div key={i} className="mt-2 border-l-2 border-jborder/60 pl-3">
+                          <p className="text-[11px] leading-relaxed text-jtext/85">
+                            {pt.text}
+                          </p>
+                          {(pt.messageRefs.length > 0 ||
+                            pt.evidenceRefs.length > 0) && (
+                            <div className="mt-1 flex flex-wrap gap-2">
+                              {pt.messageRefs.map((r) => (
+                                <button
+                                  key={r.messageId}
+                                  type="button"
+                                  onClick={() =>
+                                    navigate(
+                                      `/investigations/${caseId}/intelligence?msg=${r.n}`,
+                                    )
+                                  }
+                                  className="font-mono text-[9px] uppercase tracking-wider text-jcyan transition-colors hover:text-jcyan/60"
+                                  title={r.quote}
+                                >
+                                  MSG #{r.n}
+                                </button>
+                              ))}
+                              {pt.evidenceRefs.map((e) => (
+                                <span
+                                  key={e.evidenceId}
+                                  className="border border-jteal/50 bg-jteal/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-jteal"
+                                >
+                                  {e.alias}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {s?.uncertainty && (
+                        <p className="mt-2 font-mono text-[9px] leading-relaxed text-jmuted/70">
+                          uncertain because: {s.uncertainty}
+                        </p>
+                      )}
+                      {s?.suggestedNextStep && (
+                        <p className="mt-1 font-mono text-[9px] leading-relaxed text-jamber">
+                          → {s.suggestedNextStep}
+                        </p>
+                      )}
+                    </>
+                  )}
                 </div>
-              ))}
-            </div>
-          )) || (
+              );
+            })
+          ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center">
-              <svg className="size-6 text-jmuted/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted">Ask a question</p>
-              <p className="font-mono text-[9px] text-jmuted/60">Keep it under 2,000 characters.</p>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-jmuted">
+                Ask a question
+              </p>
+              <p className="font-mono text-[9px] text-jmuted/60">
+                Answers cite only this case&apos;s records.
+              </p>
             </div>
           )}
+        </div>
+
+        {/* Suggested questions */}
+        <div className="flex flex-wrap gap-1.5 px-3 pt-2">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              disabled={sending}
+              onClick={() => void send(s)}
+              className="border border-jborder/50 bg-jsurface/50 px-2 py-1 text-left font-mono text-[9px] text-jmuted transition-colors hover:border-jcyan/50 hover:text-jcyan disabled:opacity-50"
+            >
+              {s}
+            </button>
+          ))}
         </div>
 
         {/* Input */}
@@ -127,27 +280,48 @@ export function CopilotView({ caseId }: { caseId: string }) {
           <Textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask anything about this case…"
+            placeholder="Ask anything about this investigation…"
             rows={2}
             maxLength={2_000}
             disabled={sending}
             className="min-h-0 flex-1 font-mono text-[11px] text-jtext placeholder:text-jmuted/40 focus-visible:border-jcyan/70 focus-visible:ring-jcyan/40"
           />
-          <Button
-            type="submit"
-            disabled={sending || !question.trim()}
-            className="gap-1.5 bg-jcyan text-background hover:bg-jcyan/85"
-          >
-            <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-5 5m5-5l5 5" />
-            </svg>
-            {sending ? "Sending…" : "Ask"}
-          </Button>
+          <div className="flex flex-col items-end justify-between">
+            <span className="font-mono text-[9px] text-jmuted/50">
+              {question.length}/2000
+            </span>
+            <Button
+              type="submit"
+              disabled={sending || !question.trim()}
+              className="gap-1.5 bg-jcyan text-background hover:bg-jcyan/85"
+            >
+              {sending ? "Sending…" : "Ask"}
+            </Button>
+          </div>
         </form>
+        <p className="px-3 pb-2 font-mono text-[8px] uppercase tracking-widest text-jmuted/50">
+          Responses are based only on this investigation&apos;s data.
+        </p>
       </div>
 
-      {history?.some((t: any) => t.error) && (
-        <p className="font-mono text-[9px] italic text-jamber">The last turn could not be completed. The copilot did not guess — it admitted what it could not determine.</p>
+      {failed && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-jborder/40 px-3 py-2">
+          <p className="font-mono text-[9px] italic text-jamber">
+            A turn could not be completed. The copilot did not guess — it
+            admitted what it could not determine.
+          </p>
+          {lastQuestion && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={sending}
+              className="font-mono text-[10px] uppercase tracking-wider text-jcyan hover:border-jcyan/60"
+              onClick={() => void send(lastQuestion)}
+            >
+              Retry
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );
